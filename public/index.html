@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Free Proxy List Dashboard</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; color: #333; }
+    header { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #ddd; }
+    h1 { margin: 0; font-size: 24px; }
+    h2 { font-size: 18px; margin-top: 30px; }
+    
+    .stats { display: flex; gap: 15px; margin-top: 15px; flex-wrap: wrap; }
+    .card { background: #fff; padding: 20px; border-radius: 8px; min-width: 150px; flex: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .card-title { font-size: 14px; color: #666; text-transform: uppercase; margin-bottom: 10px; }
+    .card-value { font-size: 32px; font-weight: bold; color: #1890ff; }
+    .val-good { color: #52c41a; }
+    .val-perf { color: #722ed1; }
+    .val-bad { color: #f5222d; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+    th { background: #fafafa; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background: #f9f9f9; }
+    
+    .badge { padding: 3px 7px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+    .b-http { background: #e6f7ff; color: #1890ff; }
+    .b-https { background: #f6ffed; color: #52c41a; }
+    .b-socks4, .b-socks5 { background: #fff0f6; color: #eb2f96; }
+    .b-perf { background: #f9f0ff; color: #722ed1; border: 1px solid #d3adf7; }
+    
+    .btn { padding: 6px 12px; border: 1px solid #d9d9d9; border-radius: 4px; background: #fff; cursor: pointer; text-decoration: none; color: #333; font-size: 14px; margin-right: 10px; }
+    .btn:hover { border-color: #1890ff; color: #1890ff; }
+    .lat-ok { color: #52c41a; }
+    .lat-fail { color: #ccc; }
+    
+    .subscriptions { margin-top: 20px; padding: 15px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .sub-row { margin: 10px 0; display: flex; align-items: center; gap: 10px; }
+    .sub-row label { font-weight: bold; min-width: 80px; }
+    .sub-row select, .sub-row input { padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; }
+    .sub-btn { padding: 8px 16px; background: #1890ff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .sub-btn:hover { background: #40a9ff; }
+    .sub-links { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 10px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Free Proxy List Dashboard</h1>
+  <p>Proxy Aggregator & Validator</p>
+  
+  <div class="subscriptions">
+    <h3>📦 订阅生成器</h3>
+    <div class="sub-row">
+      <label>客户端类型:</label>
+      <select id="clientType">
+        <option value="base64">Base64 (通用)</option>
+        <option value="clash">Clash 完整配置</option>
+        <option value="clash-provider">Clash Provider</option>
+        <option value="v2ray">V2Ray/VController</option>
+      </select>
+    </div>
+    <div class="sub-row">
+      <label>列表类型:</label>
+      <select id="listType">
+        <option value="all">全部 (可用+高性能)</option>
+        <option value="available">仅可用</option>
+        <option value="highperf">仅高性能</option>
+      </select>
+    </div>
+    <div class="sub-row" id="udpRow" style="display: none;">
+      <label>UDP支持:</label>
+      <input type="checkbox" id="udpEnable"> 启用
+    </div>
+    <div class="sub-row">
+      <button class="sub-btn" onclick="generateSub()">生成订阅链接</button>
+    </div>
+    <div class="sub-links" id="subLinks"></div>
+  </div>
+</header>
+
+<div class="stats" id="stats-container">
+  <div class="card">
+    <div class="card-title">待测 (Ready)</div>
+    <div class="card-value" id="s-ready">--</div>
+  </div>
+  <div class="card">
+    <div class="card-title">可用 (Available)</div>
+    <div class="card-value val-good" id="s-avail">--</div>
+  </div>
+  <div class="card">
+    <div class="card-title">高性能 (High-Perf)</div>
+    <div class="card-value val-perf" id="s-perf">--</div>
+  </div>
+  <div class="card">
+    <div class="card-title">已删除 (24h)</div>
+    <div class="card-value val-bad" id="s-del">--</div>
+  </div>
+</div>
+
+<h2>最快可用节点 (Top 100)</h2>
+<table>
+  <thead>
+    <tr>
+      <th>节点</th>
+      <th>协议</th>
+      <th>区域</th>
+      <th>最后检查</th>
+      <th>Ping</th>
+      <th>Google-204</th>
+      <th>MSFT-Test</th>
+      <th>下载速度</th>
+    </tr>
+  </thead>
+  <tbody id="nodes-tbody">
+    <tr><td colspan="8" style="text-align: center; color: #999;">Loading...</td></tr>
+  </tbody>
+</table>
+
+<script>
+  const clientTypeSelect = document.getElementById('clientType');
+  const udpRow = document.getElementById('udpRow');
+  
+  clientTypeSelect.addEventListener('change', () => {
+    udpRow.style.display = clientTypeSelect.value === 'v2ray' ? 'flex' : 'none';
+  });
+
+  function formatTime(ms) {
+    if(!ms) return '-';
+    return new Date(ms).toLocaleTimeString();
+  }
+  
+  function formatSpeed(bps) {
+    if (!bps) return '-';
+    if (bps >= 1048576) return (bps / 1024 / 1024).toFixed(2) + ' MB/s';
+    if (bps >= 1024) return (bps / 1024).toFixed(1) + ' KB/s';
+    return bps + ' B/s';
+  }
+
+  function formatLat(v) {
+    if (v === null || v === undefined || v === -1) return '<span class="lat-fail">Fail</span>';
+    return '<span class="lat-ok">' + v + ' ms</span>';
+  }
+
+  function generateSub() {
+    const clientType = document.getElementById('clientType').value;
+    const listType = document.getElementById('listType').value;
+    const udp = document.getElementById('udpEnable').checked;
+    
+    let url = `/api/subconverter?target=${clientType}&list=${listType}`;
+    if (clientType === 'v2ray' && udp) {
+      url += '&udp=true';
+    }
+    
+    const linksContainer = document.getElementById('subLinks');
+    linksContainer.innerHTML = '';
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.className = 'btn';
+    const typeNames = {
+      'base64': 'Base64 订阅',
+      'clash': 'Clash 配置',
+      'clash-provider': 'Clash Provider',
+      'v2ray': 'V2Ray 订阅'
+    };
+    a.textContent = typeNames[clientType] || clientType;
+    linksContainer.appendChild(a);
+  }
+
+  async function loadDash() {
+    try {
+      const pStats = fetch('/api/stats').then(r => r.json());
+      const pNodes = fetch('/api/nodes/available?limit=100').then(r => r.json());
+      
+      const [stats, nodes] = await Promise.all([pStats, pNodes]);
+      
+      if (stats.success) {
+        document.getElementById('s-ready').innerText = stats.data.readyCount;
+        document.getElementById('s-avail').innerText = stats.data.availableCount;
+        document.getElementById('s-perf').innerText = stats.data.highPerfCount;
+        document.getElementById('s-del').innerText = stats.data.deletedLogsCount;
+      }
+
+      if (nodes.success) {
+        let html = '';
+        for (const n of nodes.data) {
+          const perfBadge = n.status === 2 ? ' <span class="badge b-perf">⚡</span>' : '';
+          // 优先显示 long_name，不存在则使用 short_name
+          const country = n.long_name && n.long_name !== 'Unknown' ? n.long_name : n.short_name;
+          html += `
+            <tr>
+              <td><strong>${n.ip}:${n.port}</strong><br><small style="color:#888">${n.hash} · ${n.remark}</small></td>
+              <td><span class="badge b-${n.protocol}">${n.protocol.toUpperCase()}</span></td>
+              <td>${country}</td>
+              <td>${formatTime(n.last_checked)}</td>
+              <td>${formatLat(n.ping_latency)}</td>
+              <td>${formatLat(n.google_latency)}</td>
+              <td>${formatLat(n.msft_latency)}</td>
+              <td>${formatSpeed(n.download_speed_bps)}${perfBadge}</td>
+            </tr>
+          `;
+        }
+        if (nodes.data.length === 0) html = '<tr><td colspan="8" style="text-align: center; color: #999;">暂无可用节点，待测队列正在验证...</td></tr>';
+        document.getElementById('nodes-tbody').innerHTML = html;
+      }
+
+    } catch(e) {
+      console.error('Failed to load dashboard:', e);
+    }
+  }
+
+  loadDash();
+  setInterval(loadDash, 10000);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,87 @@
+# free-proxy-list 基础核心配置文件
+#
+# 特说明：本文件在实际部署 (PaaS) 时，将通过 ConfigMap 或本地外置卷挂载覆盖
+# 提供统一化且低耦合的运行前配置选项。
+
+# ==========================================
+# 应用环境设定 (Application Settings)
+# ==========================================
+app:
+  # Web 服务的 HTTP 暴露端口 (可通过环境变量 PORT 覆盖)
+  port: 8080
+  
+  # 后台日志等级：debug, info, warn, error
+  log_level: "info"
+  
+  # Local Storage 存放地址
+  # 必须位于持久化挂载卷下，以保证容器抛掉后历史代理与屏蔽记录依然存在
+  db_path: "./data/proxy.sqlite"
+
+# ==========================================
+# 外部组件与服务设定 (External Integrations)
+# ==========================================
+external:
+  # 用于自动订阅转换的 API 基址，供 /api/subconverter 桥接拼接
+  subconverter_url: "https://api.wcc.best/sub"
+
+# ==========================================
+# 高级验证与内存限度管控设定 (Runtime Constraints)
+# ==========================================
+runtime:
+  # 并发验证线程数（最大 32，默认 8）
+  # 低配环境(64MB)建议 4~8，高性能主机可调到 16~32
+  validation_concurrency: 8
+
+  # 相邻检查节点的额外强制等待时间，单位毫秒 (ms)
+  # 设为 0 即不等待，全速运行
+  delay_between_tests: 0
+  
+  # 两次测速任务之间的额外等待时间，单位毫秒 (ms)
+  # 如果不希望测速过于频繁占带宽，可以设长一些
+  delay_between_speedtests: 0
+  
+  # 任何针对节点的底层测试操作（包括 Ping，HTTP request）的最高硬超时极限
+  timeout_threshold: 5000
+  
+  # 允许每个节点验证流程发生重试的最大次数
+  max_retries: 5
+  
+  # 高性能下载测试超时强制打断限额（单位 ms，默认 10s）
+  speedtest_timeout: 10000
+  
+  # 测速并发线程数（最大 8，默认 1）
+  # 测速会占用较大带宽，建议低配环境保持 1~2
+  speedtest_concurrency: 2
+  
+  # 高性能界定基础速率红线（单位 Bytes/s，这里为 10MB/s 转化值）
+  high_performance_min_bps: 10485760
+  
+  # 代理存活老龄节点重新复检周期间隔（单位毫秒，8h = 28800000ms）
+  recheck_interval: 28800000
+  
+  # 死链日志自动抛弃阈值（单位毫秒，24h = 86400000ms）
+  purge_deleted_logs_interval: 86400000
+  
+  # 插件执行间隔时间（单位秒，默认 6 小时 = 21600 秒）
+  plugin_interval_seconds: 21600
+
+# ==========================================
+# 提取器与插件机制规划 (Plugin Schedulers)
+# ==========================================
+plugins:
+  # 注意：插件会按照配置顺序依次执行，每次执行间隔由 plugin_interval_seconds 控制
+  
+  - name: "freeproxylist"
+    command: "node"
+    entry: "./plugins/freeproxylist/main.js"
+    enabled: true
+    
+  - name: "proxyscrape"
+    command: "node"
+    entry: "./plugins/proxyscrape/index.js"
+    enabled: true
+    
+  - name: "freeproxy"
+    command: "node"
+    entry: "./plugins/freeproxy/main.js"
+    enabled: true
