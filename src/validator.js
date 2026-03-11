@@ -1,5 +1,6 @@
 import net from 'node:net';
 import axios from 'axios';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 import { statements } from './db.js';
 import { config, logger } from './config.js';
 import { testSpeed } from './speedtest.js';
@@ -42,12 +43,21 @@ async function pingHost(host, port) {
 
 async function measureHttpLatency(host, port, protocol, url) {
   const sTime = Date.now();
+  const options = {
+    timeout: timeoutMs,
+    validateStatus: () => true
+  };
+
+  if (protocol.startsWith('socks')) {
+    const agent = new SocksProxyAgent(`${protocol}://${host}:${port}`);
+    options.httpAgent = agent;
+    options.httpsAgent = agent;
+  } else {
+    options.proxy = { host, port, protocol: protocol === 'https' ? 'https' : 'http' };
+  }
+
   try {
-    await axios.get(url, {
-      timeout: timeoutMs,
-      proxy: { host, port, protocol },
-      validateStatus: () => true
-    });
+    await axios.get(url, options);
     return Date.now() - sTime;
   } catch (err) {
     return -1;

@@ -166,7 +166,6 @@ export const statements = {
     LIMIT ? OFFSET ?
   `),
 
-  // 统计各状态数量
   getCountsByStatus: db.prepare(`
     SELECT 
       COUNT(*) as total,
@@ -174,8 +173,59 @@ export const statements = {
       SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as available,
       SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) as highperf
     FROM proxies
+  `),
+  
+  clearAllData: db.prepare(`
+    DELETE FROM proxies;
+  `),
+  
+  clearDeletedLogs: db.prepare(`
+    DELETE FROM deleted_logs;
   `)
 };
+
+/**
+ * 动态搜索节点
+ */
+export function searchNodes(filters = {}) {
+  const { country, type, speed, delay, sort, order, limit = 500 } = filters;
+  let sql = `SELECT * FROM proxies WHERE status IN (1, 2)`;
+  const params = [];
+
+  if (country) {
+    sql += ` AND short_name LIKE ?`;
+    params.push(`${country}%`);
+  }
+  if (type) {
+    sql += ` AND protocol = ?`;
+    params.push(type.toLowerCase());
+  }
+  if (speed) {
+    sql += ` AND download_speed_bps >= ?`;
+    params.push(parseInt(speed, 10) * 1024);
+  }
+  if (delay) {
+    sql += ` AND google_latency <= ? AND google_latency > 0`;
+    params.push(parseInt(delay, 10));
+  }
+
+  // 排序处理
+  const allowedSortFields = ['protocol', 'short_name', 'download_speed_bps', 'google_latency', 'last_checked'];
+  const sortField = allowedSortFields.includes(sort) ? sort : 'status';
+  const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
+  
+  // 如果是 status 排序，加上默认的次级排序
+  if (sortField === 'status') {
+    sql += ` ORDER BY status DESC, download_speed_bps DESC, google_latency ASC`;
+  } else {
+    sql += ` ORDER BY ${sortField} ${sortOrder}`;
+  }
+
+  sql += ` LIMIT ?`;
+  params.push(limit);
+
+  return db.prepare(sql).all(...params);
+}
 
 export const closeDb = () => {
     logger.info('[DB] Closing Database Connection...');

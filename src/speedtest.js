@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 import { logger, config } from './config.js';
 
 /**
@@ -10,23 +11,30 @@ export async function testSpeed(proxyHost, proxyPort, protocol) {
   const URL = 'http://speed.cloudflare.com/__down?bytes=10000000';
   const MAX_TIME_MS = config.runtime.speedtestTimeoutMs; 
 
-  const proxyConfig = {
-    host: proxyHost,
-    port: proxyPort,
-    protocol: protocol === 'https' ? 'https' : 'http'
-  };
-
   const startTime = Date.now();
   let downloadedBytes = 0;
 
+  const options = {
+    method: 'get',
+    url: URL,
+    responseType: 'stream',
+    timeout: MAX_TIME_MS,
+  };
+
+  if (protocol.startsWith('socks')) {
+    const agent = new SocksProxyAgent(`${protocol}://${proxyHost}:${proxyPort}`);
+    options.httpAgent = agent;
+    options.httpsAgent = agent;
+  } else {
+    options.proxy = {
+      host: proxyHost,
+      port: proxyPort,
+      protocol: protocol === 'https' ? 'https' : 'http'
+    };
+  }
+
   try {
-    const response = await axios({
-      method: 'get',
-      url: URL,
-      proxy: proxyConfig,
-      responseType: 'stream',
-      timeout: MAX_TIME_MS, 
-    });
+    const response = await axios(options);
 
     return new Promise((resolve) => {
       // 设置硬性超时掐爆阀门

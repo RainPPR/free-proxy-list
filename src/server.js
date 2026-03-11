@@ -1,9 +1,13 @@
 import express from 'express';
 import path from 'node:path';
-import { statements } from './db.js';
+import { statements, searchNodes } from './db.js';
 import { config, logger } from './config.js';
+import { verifyAuth, resetAdminCreds } from './auth.js';
 
 const app = express();
+
+// 解析 JSON 请求体
+app.use(express.json());
 
 // 提供 public 的静态前端面板
 app.use(express.static(path.resolve(process.cwd(), 'public')));
@@ -51,22 +55,31 @@ app.get('/api/nodes/highperf', (req, res) => {
 // 支持的 list: all, available, highperf
 app.get('/api/subconverter', async (req, res) => {
   try {
-    const clientType = req.query.target || 'clash';
-    const listType = req.query.list || 'all'; // 'all', 'available', 'highperf'
-    const udp = req.query.udp === 'true'; // v2ray 是否启用 UDP
+    const { target: clientType = 'clash', list: listType, udp, country, type, speed, delay, sort, order } = req.query;
+    const isUdp = udp === 'true';
 
     let nodes = [];
-    if (listType === 'highperf') {
-      nodes = statements.getHighPerformanceNodes.all(500, 0);
-    } else if (listType === 'available') {
-      nodes = statements.getAvailableNodesForSub.all(500, 0);
+    
+    // 如果有具体的过滤参数，使用 searchNodes
+    if (country || type || speed || delay || sort) {
+      nodes = searchNodes({ country, type, speed, delay, sort, order });
     } else {
-      // 'all' - 获取所有可用+高性能，保持 getAvailableNodesForSub 的排序
-      nodes = statements.getAvailableNodesForSub.all(500, 0);
+      // 否则回退到原有的列表类型逻辑
+      if (listType === 'highperf') {
+        nodes = statements.getHighPerformanceNodes.all(500, 0);
+      } else {
+        nodes = statements.getAvailableNodesForSub.all(500, 0);
+      }
     }
 
     if (!nodes || nodes.length === 0) {
-      return res.status(404).send('No available proxy nodes yet. Wait for validator.');
+      if (clientType === 'raw') return res.json({ success: true, data: [] });
+      return res.status(404).send('No nodes matching your criteria.');
+    }
+
+    // target=raw 直接返回 JSON
+    if (clientType === 'raw') {
+      return res.json({ success: true, data: nodes });
     }
 
     // 格式化节点名称: longName_hash (如 United States_a1b2c3d)，如果 long_name 不存在则使用 short_name
@@ -199,6 +212,38 @@ app.get('/api/subconverter', async (req, res) => {
   } catch (err) {
     logger.error(`[API] 生成订阅错误: ${err.message}`);
     res.status(500).send('Internal Error');
+  }
+});
+
+// 管理员 API: 清除所有数据 (需要双重验证)
+app.post('/api/admin/clear', (req, res) => {
+  const { uuid, token } = req.body;
+  if (verifyAuth(uuid, token)) {
+    try {
+      statements.clearAllData.run();
+      statements.clearDeletedLogs.run();
+      logger.warn(`[Admin] 🗑️ 管理员指令：已清空所有代理数据和历史日志。`);
+      res.json({ success: true, message: '数据已清空' });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } else {
+    res.status(401).json({ success: false, message: '凭据无效' });
+  }
+});
+
+// 管理员 API: 重置凭据 (需要双重验证)
+app.post('/api/admin/reset-creds', (req, res) => {
+  const { uuid, token } = req.body;
+  if (verifyAuth(uuid, token)) {
+    try {
+      resetAdminCreds();
+      res.json({ success: true, message: '凭据已重置，新凭据请查看终端或 data/admin_creds.txt' });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } else {
+    res.status(401).json({ success: false, message: '凭据无效' });
   }
 });
 

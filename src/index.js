@@ -4,12 +4,16 @@ import { initScheduler, stopScheduler } from './scheduler.js';
 import { startValidatorEngine } from './validator.js';
 import { initMaintenance, stopMaintenance } from './maintenance.js';
 import { startServer } from './server.js';
+import { initAuth } from './auth.js';
 
 let serverHandle = null;
 
 async function bootstrap() {
   logger.info(`[System] ====== Free Proxy List 启动 ======`);
   
+  // 0. 初始化管理凭据
+  initAuth();
+
   // 1. 启动 HTTP 和 Dashboard API
   serverHandle = startServer();
 
