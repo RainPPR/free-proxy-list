@@ -144,13 +144,32 @@
       display: none;
       border: 1px solid var(--border);
     }
+
+    /* 分页控件 */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-top: 20px;
+      padding: 15px;
+      background: var(--highlight);
+      border: 1px solid var(--border);
+    }
+    .pagination input { width: 50px; text-align: center; }
   </style>
 </head>
 <body>
 
 <div class="container">
   <header>
-    <h1>Proxy List System</h1>
+    <div style="display: flex; align-items: baseline; gap: 15px;">
+      <h1>Proxy List System</h1>
+      <div id="mode-switcher" style="display: flex; gap: 5px;">
+        <button class="btn btn-outline mode-btn active" data-region="global" onclick="switchRegion('global')">Global</button>
+        <button class="btn btn-outline mode-btn" data-region="cn" onclick="switchRegion('cn')">China</button>
+      </div>
+    </div>
     <button class="btn btn-outline" onclick="loadData()">Refresh</button>
   </header>
 
@@ -184,15 +203,6 @@
       <label>Max Delay (ms)</label>
       <input type="number" id="f-delay" oninput="debounceLoad()">
     </div>
-    <div class="field">
-        <label>Format</label>
-        <select id="sub-format">
-            <option value="base64">Base64</option>
-            <option value="clash">Clash</option>
-            <option value="v2ray">V2Ray</option>
-            <option value="clash-provider">Provider</option>
-        </select>
-    </div>
     <div class="field" style="justify-content: flex-end;">
         <button class="btn" onclick="copyLink()">Copy Link</button>
     </div>
@@ -207,13 +217,33 @@
           <th onclick="setSort('short_name')">Location</th>
           <th onclick="setSort('download_speed_bps')">Speed</th>
           <th onclick="setSort('google_latency')">Latency</th>
+          <th onclick="setSort('msft_latency')">MSFT</th>
+          <th onclick="setSort('hicmatch_latency')">HICMATCH</th>
           <th onclick="setSort('last_checked')">Checked</th>
         </tr>
       </thead>
       <tbody id="node-list">
-        <tr><td colspan="6" style="text-align: center; padding: 40px;">Loading nodes...</td></tr>
+        <tr><td colspan="7" style="text-align: center; padding: 40px;">Loading nodes...</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="pagination">
+    <button class="btn btn-outline" onclick="changePage(-1)">PREV</button>
+    <div class="field">
+      <label>Page</label>
+      <input type="number" id="f-page" value="1" min="1" onchange="loadData()">
+    </div>
+    <div class="field">
+      <label>Limit</label>
+      <select id="f-limit" onchange="resetPageAndLoad()">
+        <option value="20">20</option>
+        <option value="50">50</option>
+        <option value="100" selected>100</option>
+        <option value="200">200</option>
+      </select>
+    </div>
+    <button class="btn btn-outline" onclick="changePage(1)">NEXT</button>
   </div>
 
   <div class="admin-section">
@@ -239,6 +269,30 @@
 <script>
   let debounceTimer;
   let currentSort = { field: 'status', order: 'DESC' };
+  let currentRegion = 'global';
+
+  function switchRegion(region) {
+    currentRegion = region;
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.region === region);
+      if (btn.classList.contains('active')) {
+          btn.style.background = 'var(--text)';
+          btn.style.color = 'var(--bg)';
+      } else {
+          btn.style.background = 'transparent';
+          btn.style.color = 'var(--text)';
+      }
+    });
+
+    // 针对不同区域调整标题显示
+    if (region === 'cn') {
+      document.querySelector('h1').innerText = 'China Proxy Portal';
+    } else {
+      document.querySelector('h1').innerText = 'Global Proxy Portal';
+    }
+
+    resetPageAndLoad();
+  }
 
   function showToast(msg) {
     const el = document.getElementById('toast');
@@ -281,21 +335,42 @@
       const type = document.getElementById('f-type').value;
       const speed = document.getElementById('f-speed').value;
       const delay = document.getElementById('f-delay').value;
-      const format = document.getElementById('sub-format').value;
+      const page = document.getElementById('f-page').value;
+      const limit = document.getElementById('f-limit').value;
       
-      let q = '?target=' + (isRaw ? 'raw' : format);
+      let q = '?target=' + (isRaw ? 'raw' : 'base64');
       if (country) q += '&country=' + country;
       if (type) q += '&type=' + type;
       if (speed) q += '&speed=' + speed;
       if (delay) q += '&delay=' + delay;
+      if (page) q += '&page=' + page;
+      if (limit) q += '&limit=' + limit;
       if (currentSort.field) q += '&sort=' + currentSort.field + '&order=' + currentSort.order;
       return q;
   }
 
+  function getApiBase() {
+    return currentRegion === 'cn' ? '/api/cn' : '/api';
+  }
+
+  function changePage(delta) {
+    const el = document.getElementById('f-page');
+    let val = parseInt(el.value, 10) || 1;
+    val = Math.max(1, val + delta);
+    el.value = val;
+    loadData();
+  }
+
+  function resetPageAndLoad() {
+    document.getElementById('f-page').value = 1;
+    loadData();
+  }
+
   async function loadData() {
     try {
+      const base = getApiBase();
       // Load Stats
-      const statRes = await fetch('/api/stats').then(r => r.json());
+      const statRes = await fetch(base + '/stats').then(r => r.json());
       if (statRes.success) {
         document.getElementById('s-ready').innerText = statRes.data.readyCount;
         document.getElementById('s-avail').innerText = statRes.data.availableCount;
@@ -304,18 +379,19 @@
       }
 
       // Load Nodes
-      const nodeRes = await fetch('/api/subconverter' + getQueryString(true)).then(r => r.json());
+      const nodeRes = await fetch(base + '/subconverter' + getQueryString(true)).then(r => r.json());
       const tbody = document.getElementById('node-list');
       
       if (nodeRes.success) {
         if (nodeRes.data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">No matching nodes found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 20px;">No matching nodes found.</td></tr>';
             return;
         }
         
         tbody.innerHTML = nodeRes.data.map(n => {
             const speed = (n.download_speed_bps / 1024).toFixed(1) + ' KB/s';
             const latency = n.google_latency > 0 ? n.google_latency + 'ms' : '-';
+            const msft = n.msft_latency > 0 ? n.msft_latency + 'ms' : '-';
             const location = n.long_name && n.long_name !== 'Unknown' ? n.long_name : (n.short_name || '-');
             const time = new Date(n.last_checked).toLocaleTimeString();
             
@@ -325,6 +401,8 @@
                 '<td>' + location + '</td>' +
                 '<td><span class="speed-val">' + speed + '</span></td>' +
                 '<td><span class="latency-val ' + (n.google_latency <= 0 ? 'fail':'') + '">' + latency + '</span></td>' +
+                '<td><span class="latency-val ' + (n.msft_latency <= 0 ? 'fail':'') + '">' + msft + '</span></td>' +
+                '<td><span class="latency-val">' + (n.hicmatch_latency > 0 ? n.hicmatch_latency + 'ms' : '-') + '</span></td>' +
                 '<td style="font-size:10px; color:var(--text-muted)">' + time + '</td>' +
             '</tr>';
         }).join('');
@@ -335,7 +413,7 @@
   }
 
   function copyLink() {
-      const url = window.location.origin + '/api/subconverter' + getQueryString(false);
+      const url = window.location.origin + getApiBase() + '/subconverter' + getQueryString(false);
       navigator.clipboard.writeText(url).then(() => showToast('Link copied'));
   }
 

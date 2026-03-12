@@ -6,250 +6,167 @@ import { verifyAuth, resetAdminCreds } from './auth.js';
 
 const app = express();
 
-// 解析 JSON 请求体
 app.use(express.json());
-
-// 提供 public 的静态前端面板
 app.use(express.static(path.resolve(process.cwd(), 'public')));
 
-// 核心统计 API
-app.get('/api/stats', (req, res) => {
+// ==========================================
+// 辅助逻辑抽离 (Shared Logic)
+// ==========================================
+
+function handleGetStats(req, res, region = 'global') {
   try {
-    const stats = statements.getStats.get();
+    // 注入 4 个 region 参数，对应 SQL 中的 4 个 (WHERE region = ?)
+    const stats = statements.getStats.get(region, region, region, region);
     res.json({ success: true, data: stats });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}
 
-// 获取节点列表（支持排序和过滤）
-app.get('/api/nodes/available', (req, res) => {
+function handleGetNodes(req, res, region = 'global', type = 'available') {
   try {
     const limit = parseInt(req.query.limit) || 100;
-    const offset = parseInt(req.query.offset) || 0;
-    const safeLimit = Math.min(limit, 1000);
+    const page = parseInt(req.query.page) || 1;
+    const safeLimit = Math.min(Math.max(1, limit), 1000);
+    const offset = (Math.max(1, page) - 1) * safeLimit;
 
-    const nodes = statements.getAvailableNodesForSub.all(safeLimit, offset);
-    res.json({ success: true, data: nodes });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// 获取高性能列表
-app.get('/api/nodes/highperf', (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit) || 500;
-    const offset = parseInt(req.query.offset) || 0;
-    const safeLimit = Math.min(limit, 1000);
-
-    const nodes = statements.getHighPerformanceNodes.all(safeLimit, offset);
-    res.json({ success: true, data: nodes });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// 订阅接口：支持多个列表和多个格式
-// 支持的 target: base64, clash, v2ray, clash-provider
-// 支持的 list: all, available, highperf
-app.get('/api/subconverter', async (req, res) => {
-  try {
-    const { target: clientType = 'clash', list: listType, udp, country, type, speed, delay, sort, order } = req.query;
-    const isUdp = udp === 'true';
-
-    let nodes = [];
-    
-    // 如果有具体的过滤参数，使用 searchNodes
-    if (country || type || speed || delay || sort) {
-      nodes = searchNodes({ country, type, speed, delay, sort, order });
+    let nodes;
+    if (type === 'highperf') {
+      nodes = statements.getHighPerformanceNodes.all(region, safeLimit, offset);
     } else {
-      // 否则回退到原有的列表类型逻辑
-      if (listType === 'highperf') {
-        nodes = statements.getHighPerformanceNodes.all(500, 0);
-      } else {
-        nodes = statements.getAvailableNodesForSub.all(500, 0);
-      }
+      nodes = statements.getAvailableNodesForSub.all(region, safeLimit, offset);
     }
+    res.json({ success: true, data: nodes });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
 
-    if (!nodes || nodes.length === 0) {
-      if (clientType === 'raw') return res.json({ success: true, data: [] });
-      return res.status(404).send('No nodes matching your criteria.');
-    }
+function formatNodesResponse(nodes, clientType, res, udp) {
+  function nodeName(n) {
+    const namePart = n.long_name && n.long_name !== 'Unknown' ? n.long_name : n.short_name;
+    return `${namePart.replace(/\s+/g, '_')}_${n.hash}`;
+  }
 
-    // target=raw 直接返回 JSON
-    if (clientType === 'raw') {
-      return res.json({ success: true, data: nodes });
-    }
+  if (clientType === 'raw') {
+    return res.json({ success: true, data: nodes });
+  }
 
-    // 格式化节点名称: longName_hash (如 United States_a1b2c3d)，如果 long_name 不存在则使用 short_name
-    function nodeName(n) {
-      const namePart = n.long_name && n.long_name !== 'Unknown' ? n.long_name : n.short_name;
-      return `${namePart.replace(/\s+/g, '_')}_${n.hash}`;
-    }
-
-    // Base64 订阅格式
-    if (clientType === 'base64') {
-      const rawLinks = nodes.map(n => {
-        const remark = encodeURIComponent(nodeName(n));
-        return `${n.protocol}://${n.ip}:${n.port}#${remark}`;
-      }).join('\n');
-      const b64 = Buffer.from(rawLinks).toString('base64');
-      res.setHeader('Content-Type', 'text/plain');
-      return res.send(b64);
-    }
-    
-    // Clash 配置文件格式 (YAML)
-    if (clientType === 'clash') {
-      let yaml = 'proxies:\n';
-      for (const n of nodes) {
-        const name = nodeName(n);
-        let type = n.protocol;
-        if (type === 'socks4' || type === 'socks5') type = 'socks5';
-        yaml += `  - name: "${name}"\n`;
-        yaml += `    type: ${type}\n`;
-        yaml += `    server: ${n.ip}\n`;
-        yaml += `    port: ${n.port}\n`;
-      }
-      yaml += '\nproxy-groups:\n';
-      yaml += '  - name: "自动选择"\n';
-      yaml += '    type: url-test\n';
-      yaml += '    proxies:\n';
-      for (const n of nodes) {
-        yaml += `      - "${nodeName(n)}"\n`;
-      }
-      yaml += '    url: "http://www.gstatic.com/generate_204"\n';
-      yaml += '    interval: 300\n';
-      yaml += '  - name: "故障转移"\n';
-      yaml += '    type: fallback\n';
-      yaml += '    proxies:\n';
-      for (const n of nodes) {
-        yaml += `      - "${nodeName(n)}"\n`;
-      }
-      yaml += '    url: "http://www.gstatic.com/generate_204"\n';
-      yaml += '    interval: 300\n';
-      res.setHeader('Content-Type', 'text/yaml');
-      return res.send(yaml);
-    }
-
-    // V2Ray/VController 订阅格式 (Base64 JSON)
-    if (clientType === 'v2ray' || clientType === 'v2ray-json') {
-      const v2rayServers = nodes.map(n => {
-        const name = nodeName(n);
-        // 根据协议确定网络类型
-        let net = 'tcp';
-        if (n.protocol === 'socks4' || n.protocol === 'socks5') {
-          return {
-            remark: name,
-            protocol: 'socks',
-            protocolparam: '',
-            server: n.ip,
-            port: n.port,
-            method: '',
-            ota: false,
-            udp: udp
-          };
-        }
-        if (n.protocol === 'http') {
-          return {
-            remark: name,
-            protocol: 'http',
-            protocolparam: '',
-            server: n.ip,
-            port: n.port,
-            method: '',
-            ota: false,
-            udp: udp
-          };
-        }
-        // https 作为 http 处理（实际是 http over tls）
-        return {
-          remark: name,
-          protocol: 'http',
-          protocolparam: '',
-          server: n.ip,
-          port: n.port,
-          method: '',
-          ota: false,
-          udp: udp,
-          tls: n.protocol === 'https'
-        };
-      });
-
-      const v2rayConfig = {
-        version: 1,
-        server: v2rayServers
-      };
-      const jsonStr = JSON.stringify(v2rayConfig, null, 2);
-      res.setHeader('Content-Type', 'text/plain');
-      return res.send(Buffer.from(jsonStr).toString('base64'));
-    }
-
-    // Clash Proxy Provider 格式 (YAML)
-    if (clientType === 'clash-provider') {
-      let yaml = 'proxies:\n';
-      for (const n of nodes) {
-        const name = nodeName(n);
-        let type = n.protocol;
-        if (type === 'socks4' || type === 'socks5') type = 'socks5';
-        yaml += `  - name: "${name}"\n`;
-        yaml += `    type: ${type}\n`;
-        yaml += `    server: ${n.ip}\n`;
-        yaml += `    port: ${n.port}\n`;
-      }
-      res.setHeader('Content-Type', 'text/yaml');
-      return res.send(yaml);
-    }
-
-    // 默认返回 base64
+  if (clientType === 'base64') {
     const rawLinks = nodes.map(n => {
       const remark = encodeURIComponent(nodeName(n));
       return `${n.protocol}://${n.ip}:${n.port}#${remark}`;
     }).join('\n');
     res.setHeader('Content-Type', 'text/plain');
-    res.send(Buffer.from(rawLinks).toString('base64'));
+    return res.send(Buffer.from(rawLinks).toString('base64'));
+  }
+  
+  if (clientType === 'clash' || clientType === 'clash-provider') {
+    let yaml = 'proxies:\n';
+    for (const n of nodes) {
+      const name = nodeName(n);
+      let type = n.protocol;
+      if (type === 'socks4' || type === 'socks5') type = 'socks5';
+      yaml += `  - name: "${name}"\n    type: ${type}\n    server: ${n.ip}\n    port: ${n.port}\n`;
+      if (n.protocol === 'https') yaml += `    tls: true\n`;
+    }
+    
+    if (clientType === 'clash-provider') {
+      res.setHeader('Content-Type', 'text/yaml');
+      return res.send(yaml);
+    }
 
+    yaml += '\nproxy-groups:\n  - name: "自动选择"\n    type: url-test\n    proxies:\n';
+    nodes.forEach(n => yaml += `      - "${nodeName(n)}"\n`);
+    yaml += '    url: "http://www.gstatic.com/generate_204"\n    interval: 300\n';
+    yaml += '  - name: "故障转移"\n    type: fallback\n    proxies:\n';
+    nodes.forEach(n => yaml += `      - "${nodeName(n)}"\n`);
+    yaml += '    url: "http://www.gstatic.com/generate_204"\n    interval: 300\n';
+    res.setHeader('Content-Type', 'text/yaml');
+    return res.send(yaml);
+  }
+
+  if (clientType === 'v2ray' || clientType === 'v2ray-json') {
+    const v2rayServers = nodes.map(n => {
+      const name = nodeName(n);
+      const type = n.protocol;
+      if (type === 'socks4' || type === 'socks5') {
+        return { remark: name, protocol: 'socks', server: n.ip, port: n.port, udp: !!udp };
+      }
+      return { remark: name, protocol: 'http', server: n.ip, port: n.port, tls: type === 'https' };
+    });
+    res.setHeader('Content-Type', 'text/plain');
+    return res.send(Buffer.from(JSON.stringify({ version: 1, server: v2rayServers }, null, 2)).toString('base64'));
+  }
+
+  const rawLinks = nodes.map(n => `${n.protocol}://${n.ip}:${n.port}#${encodeURIComponent(nodeName(n))}`).join('\n');
+  res.setHeader('Content-Type', 'text/plain');
+  res.send(Buffer.from(rawLinks).toString('base64'));
+}
+
+function handleSubConverter(req, res, region = 'global') {
+  try {
+    const { target: clientType = 'base64', list: listType = 'available', country, type, speed, delay, sort, order, udp } = req.query;
+    const limit = parseInt(req.query.limit) || 500;
+    const page = parseInt(req.query.page) || 1;
+
+    let nodes;
+    if (country || type || speed || delay || sort || req.query.limit || req.query.page) {
+      nodes = searchNodes({ country, type, speed, delay, sort, order, limit, page, region, listType });
+    } else {
+      const safeLimit = Math.min(Math.max(1, limit), 1000);
+      const offset = (Math.max(1, page) - 1) * safeLimit;
+      nodes = (listType === 'highperf') ? statements.getHighPerformanceNodes.all(region, safeLimit, offset) : statements.getAvailableNodesForSub.all(region, safeLimit, offset);
+    }
+
+    if (!nodes || nodes.length === 0) {
+      return clientType === 'raw' ? res.json({ success: true, data: [] }) : res.status(404).send('No nodes matching your criteria.');
+    }
+
+    return formatNodesResponse(nodes, clientType, res, udp);
   } catch (err) {
-    logger.error(`[API] 生成订阅错误: ${err.message}`);
+    logger.error(`[API] Sub Error: ${err.message}`);
     res.status(500).send('Internal Error');
   }
-});
+}
 
-// 管理员 API: 清除所有数据 (需要双重验证)
+// ==========================================
+// 路由注册 (Routes)
+// ==========================================
+
+// 统计 API
+app.get('/api/stats', (req, res) => handleGetStats(req, res, 'global'));
+app.get('/api/cn/stats', (req, res) => handleGetStats(req, res, 'cn'));
+
+// 节点列表 API
+app.get('/api/nodes/available', (req, res) => handleGetNodes(req, res, 'global', 'available'));
+app.get('/api/nodes/highperf', (req, res) => handleGetNodes(req, res, 'global', 'highperf'));
+app.get('/api/cn/nodes/available', (req, res) => handleGetNodes(req, res, 'cn', 'available'));
+app.get('/api/cn/nodes/highperf', (req, res) => handleGetNodes(req, res, 'cn', 'highperf'));
+
+// 订阅转换 API
+app.get('/api/subconverter', (req, res) => handleSubConverter(req, res, 'global'));
+app.get('/api/cn/subconverter', (req, res) => handleSubConverter(req, res, 'cn'));
+
+// 管理员 API
 app.post('/api/admin/clear', (req, res) => {
   const { uuid, token } = req.body;
-  if (verifyAuth(uuid, token)) {
-    try {
-      statements.clearAllData.run();
-      statements.clearDeletedLogs.run();
-      logger.warn(`[Admin] 🗑️ 管理员指令：已清空所有代理数据和历史日志。`);
-      res.json({ success: true, message: '数据已清空' });
-    } catch (err) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  } else {
-    res.status(401).json({ success: false, message: '凭据无效' });
-  }
+  if (!verifyAuth(uuid, token)) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+  try {
+    statements.clearAllData.run();
+    statements.clearDeletedLogs.run();
+    res.json({ success: true, message: 'Data cleared' });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-// 管理员 API: 重置凭据 (需要双重验证)
 app.post('/api/admin/reset-creds', (req, res) => {
   const { uuid, token } = req.body;
-  if (verifyAuth(uuid, token)) {
-    try {
-      resetAdminCreds();
-      res.json({ success: true, message: '凭据已重置，新凭据请查看终端或 data/admin_creds.txt' });
-    } catch (err) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  } else {
-    res.status(401).json({ success: false, message: '凭据无效' });
-  }
+  if (!verifyAuth(uuid, token)) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+  try { resetAdminCreds(); res.json({ success: true, message: 'Credentials reset' }); } 
+  catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 export function startServer() {
   const { port } = config.app;
-  return app.listen(port, '0.0.0.0', () => {
-    logger.info(`[Web] 控制台和 API 服务已运行: http://0.0.0.0:${port}`);
-  });
+  return app.listen(port, '0.0.0.0', () => logger.info(`[Web] API service running at: http://0.0.0.0:${port}`));
 }

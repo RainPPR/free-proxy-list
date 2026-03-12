@@ -19,13 +19,14 @@ db.pragma('busy_timeout = 5000');
 // 初始化各种表
 db.exec(`
   CREATE TABLE IF NOT EXISTS proxies (
-    hash TEXT PRIMARY KEY,
+    hash TEXT NOT NULL,
     protocol TEXT NOT NULL,
     ip TEXT NOT NULL,
     port INTEGER NOT NULL,
     short_name TEXT,
     long_name TEXT,
     remark TEXT,
+    region TEXT DEFAULT 'global', -- 'global' 或 'cn'
     status INTEGER DEFAULT 0, -- 0: Ready, 1: Available, 2: High-Performance
     first_added INTEGER,
     last_added INTEGER,
@@ -34,19 +35,23 @@ db.exec(`
     ping_latency INTEGER,
     google_latency INTEGER,
     msft_latency INTEGER,
-    download_speed_bps INTEGER
+    hicmatch_latency INTEGER,
+    download_speed_bps INTEGER,
+    PRIMARY KEY (hash, region)
   );
 
   CREATE TABLE IF NOT EXISTS deleted_logs (
     hash TEXT PRIMARY KEY,
-    deleted_at INTEGER NOT NULL
+    deleted_at INTEGER NOT NULL,
+    region TEXT DEFAULT 'global'
   );
 
-  CREATE INDEX IF NOT EXISTS idx_proxies_status ON proxies(status);
-  CREATE INDEX IF NOT EXISTS idx_proxies_last_checked ON proxies(last_checked);
-  CREATE INDEX IF NOT EXISTS idx_proxies_highperf ON proxies(status, google_latency, ping_latency);
-  CREATE INDEX IF NOT EXISTS idx_proxies_available ON proxies(status, download_speed_bps, ping_latency);
+  CREATE INDEX IF NOT EXISTS idx_proxies_status_region ON proxies(status, region);
+  CREATE INDEX IF NOT EXISTS idx_proxies_lc_region ON proxies(last_checked, region);
+  CREATE INDEX IF NOT EXISTS idx_proxies_highperf ON proxies(status, region, google_latency, ping_latency);
+  CREATE INDEX IF NOT EXISTS idx_proxies_available ON proxies(status, region, download_speed_bps, ping_latency);
   CREATE INDEX IF NOT EXISTS idx_deleted_logs_at ON deleted_logs(deleted_at);
+  CREATE INDEX IF NOT EXISTS idx_deleted_logs_hash_region ON deleted_logs(hash, region);
 `);
 
 logger.info(`[DB] Using SQLite DB at: ${config.app.dbPath}`);
@@ -54,10 +59,10 @@ logger.info(`[DB] Using SQLite DB at: ${config.app.dbPath}`);
 export const statements = {
   // ----------- deleted_logs -----------
   insertDeleted: db.prepare(`
-    INSERT OR REPLACE INTO deleted_logs (hash, deleted_at) VALUES (?, ?)
+    INSERT OR REPLACE INTO deleted_logs (hash, deleted_at, region) VALUES (?, ?, ?)
   `),
   isDeleted: db.prepare(`
-    SELECT hash FROM deleted_logs WHERE hash = ?
+    SELECT hash FROM deleted_logs WHERE hash = ? AND region = ?
   `),
   purgeOldDeletedLogs: db.prepare(`
     DELETE FROM deleted_logs WHERE deleted_at < ?
@@ -65,17 +70,17 @@ export const statements = {
 
   // ----------- proxies -----------
   existsProxy: db.prepare(`
-    SELECT hash FROM proxies WHERE hash = ?
+    SELECT hash FROM proxies WHERE hash = ? AND region = ?
   `),
   insertOrUpdateReadyProxy: db.prepare(`
     INSERT INTO proxies (
-      hash, protocol, ip, port, short_name, long_name, remark, 
+      hash, protocol, ip, port, short_name, long_name, remark, region,
       status, first_added, last_added, last_checked
     ) VALUES (
-      @hash, @protocol, @ip, @port, @shortName, @longName, @remark, 
+      @hash, @protocol, @ip, @port, @shortName, @longName, @remark, @region,
       0, @now, @now, 0
     ) 
-    ON CONFLICT(hash) DO UPDATE SET 
+    ON CONFLICT(hash, region) DO UPDATE SET 
       last_added = @now,
       remark = excluded.remark,
       short_name = excluded.short_name
@@ -105,36 +110,41 @@ export const statements = {
       last_checked = ?, 
       ping_latency = ?, 
       google_latency = ?, 
-      msft_latency = ? 
-    WHERE hash = ?
+      msft_latency = ?,
+      hicmatch_latency = ?
+    WHERE hash = ? AND region = ?
   `),
 
   updateProxySpeed: db.prepare(`
     UPDATE proxies SET 
       speed_check_time = ?, 
       download_speed_bps = ?,
-      status = CASE WHEN ? >= ${config.runtime.highPerformanceMinBps} THEN 2 ELSE status END
-    WHERE hash = ?
+      status = CASE 
+        WHEN ? >= ${config.runtime.highPerformanceMinBps} THEN 2 
+        WHEN status = 2 AND ? < ${config.runtime.highPerformanceMinBps} THEN 1 
+        ELSE status 
+      END
+    WHERE hash = ? AND region = ?
   `),
 
   deleteProxy: db.prepare(`
-    DELETE FROM proxies WHERE hash = ?
+    DELETE FROM proxies WHERE hash = ? AND region = ?
   `),
 
   getStats: db.prepare(`
     SELECT 
-      (SELECT COUNT(*) FROM proxies WHERE status = 0) as readyCount,
-      (SELECT COUNT(*) FROM proxies WHERE status = 1) as availableCount,
-      (SELECT COUNT(*) FROM proxies WHERE status = 2) as highPerfCount,
-      (SELECT COUNT(*) FROM deleted_logs) as deletedLogsCount
+      (SELECT COUNT(*) FROM proxies WHERE status = 0 AND region = ?) as readyCount,
+      (SELECT COUNT(*) FROM proxies WHERE status = 1 AND region = ?) as availableCount,
+      (SELECT COUNT(*) FROM proxies WHERE status = 2 AND region = ?) as highPerfCount,
+      (SELECT COUNT(*) FROM deleted_logs WHERE region = ?) as deletedLogsCount
   `),
 
-  // 获取可用+高性能列表（排序规则：按状态先2后1；再按协议优先级(socks5/socks4 > https > http)；然后国家优先级；最后详细信息优先级）
+  // 获取可用+高性能列表
   getAvailableNodesForSub: db.prepare(`
     SELECT * FROM proxies 
-    WHERE status IN (1, 2) 
+    WHERE status IN (1, 2) AND region = ?
     ORDER BY 
-      status DESC,              -- HighPerf(2) 在前, Available(1) 在后
+      status DESC,
       
       -- 第一优先级：协议权重 (socks5/socks4 > https > http)
       CASE 
@@ -161,7 +171,7 @@ export const statements = {
   // 获取高性能列表（专门的高性能订阅）
   getHighPerformanceNodes: db.prepare(`
     SELECT * FROM proxies 
-    WHERE status = 2 
+    WHERE status = 2 AND region = ?
     ORDER BY google_latency ASC, ping_latency ASC
     LIMIT ? OFFSET ?
   `),
@@ -173,6 +183,7 @@ export const statements = {
       SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as available,
       SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) as highperf
     FROM proxies
+    WHERE region = ?
   `),
   
   clearAllData: db.prepare(`
@@ -188,9 +199,15 @@ export const statements = {
  * 动态搜索节点
  */
 export function searchNodes(filters = {}) {
-  const { country, type, speed, delay, sort, order, limit = 500 } = filters;
-  let sql = `SELECT * FROM proxies WHERE status IN (1, 2)`;
-  const params = [];
+  const { country, type, speed, delay, sort, order, page = 1, limit = 500, region = 'global', listType = 'available' } = filters;
+  const safeLimit = Math.min(Math.max(1, parseInt(limit, 10)), 1000);
+  const safePage = Math.max(1, parseInt(page, 10));
+  const offset = (safePage - 1) * safeLimit;
+  
+  let sql = listType === 'highperf' 
+    ? `SELECT * FROM proxies WHERE status = 2 AND region = ?`
+    : `SELECT * FROM proxies WHERE status IN (1, 2) AND region = ?`;
+  const params = [region];
 
   if (country) {
     sql += ` AND short_name LIKE ?`;
@@ -200,17 +217,15 @@ export function searchNodes(filters = {}) {
     sql += ` AND protocol = ?`;
     params.push(type.toLowerCase());
   }
-  if (speed) {
-    sql += ` AND download_speed_bps >= ?`;
-    params.push(parseInt(speed, 10) * 1024);
-  }
   if (delay) {
-    sql += ` AND google_latency <= ? AND google_latency > 0`;
+    // 延迟过滤器根据区域选择主要参考字段
+    const delayField = region === 'cn' ? 'msft_latency' : 'google_latency';
+    sql += ` AND ${delayField} <= ? AND ${delayField} > 0`;
     params.push(parseInt(delay, 10));
   }
 
   // 排序处理
-  const allowedSortFields = ['protocol', 'short_name', 'download_speed_bps', 'google_latency', 'last_checked'];
+  const allowedSortFields = ['protocol', 'short_name', 'download_speed_bps', 'google_latency', 'msft_latency', 'hicmatch_latency', 'last_checked'];
   const sortField = allowedSortFields.includes(sort) ? sort : 'status';
   const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
   
@@ -221,8 +236,8 @@ export function searchNodes(filters = {}) {
     sql += ` ORDER BY ${sortField} ${sortOrder}`;
   }
 
-  sql += ` LIMIT ?`;
-  params.push(limit);
+  sql += ` LIMIT ? OFFSET ?`;
+  params.push(safeLimit, offset);
 
   return db.prepare(sql).all(...params);
 }

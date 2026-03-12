@@ -42,56 +42,94 @@ async function pingHost(host, port) {
 }
 
 async function measureHttpLatency(host, port, protocol, url) {
-  const sTime = Date.now();
-  const options = {
-    timeout: timeoutMs,
-    validateStatus: () => true
-  };
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const sTime = Date.now();
+    const options = {
+      timeout: timeoutMs,
+      // 放宽状态码判定：2xx 到 3xx 均视为通畅
+      validateStatus: (status) => status >= 200 && status < 400,
+      maxRedirects: 5
+    };
 
-  if (protocol.startsWith('socks')) {
-    const agent = new SocksProxyAgent(`${protocol}://${host}:${port}`);
-    options.httpAgent = agent;
-    options.httpsAgent = agent;
-  } else {
-    options.proxy = { host, port, protocol: protocol === 'https' ? 'https' : 'http' };
-  }
+    if (protocol.startsWith('socks')) {
+      const agent = new SocksProxyAgent(`${protocol}://${host}:${port}`);
+      options.httpAgent = agent;
+      options.httpsAgent = agent;
+    } else {
+      options.proxy = { host, port, protocol: protocol === 'https' ? 'https' : 'http' };
+    }
 
-  try {
-    await axios.get(url, options);
-    return Date.now() - sTime;
-  } catch (err) {
-    return -1;
+    try {
+      await axios.get(url, options);
+      return { success: true, latency: Date.now() - sTime };
+    } catch (err) {
+      if (attempt < maxRetries) {
+        await delay(200);
+      } else {
+        return { success: false, latency: -1 };
+      }
+    }
   }
 }
+
+// ============= 区域验证策略 =============
+
+const STRATEGIES = {
+  global: {
+    // 全球节点：Google 和 Microsoft 必须都成功
+    validate: (g, m, h) => g > 0 && g <= 5000 && m > 0 && m <= 5000,
+    speedtestUrl: 'http://speed.cloudflare.com/__down?bytes=10000000'
+  },
+  cn: {
+    // 中国节点：Google 必须失败，且 Microsoft 和 Hicmatch (Huawei) 必须成功
+    validate: (g, m, h) => g === -1 && m > 0 && m <= 5000 && h > 0 && h <= 5000,
+    speedtestUrl: 'https://dldir1v6.qq.com/weixin/Universal/Windows/WeChatWin_4.1.7.exe'
+  }
+};
 
 // ============= 单节点验证（不含测速） =============
 
 async function validateProxy(proxyObj) {
-  const { hash, ip, port, protocol, status } = proxyObj;
-  let pLater = -1, gLater = -1, mLater = -1;
+  const { hash, ip, port, protocol, region = 'global' } = proxyObj;
+  let pLater = -1; // Ping latency
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     pLater = await pingHost(ip, port);
-    if (pLater === -1 || pLater > 5000) {
-      if (attempt < maxRetries) { await delay(100); continue; }
-      else { handleFailedProxy(hash, "Ping 超时"); return; }
-    }
-
-    gLater = await measureHttpLatency(ip, port, protocol, 'http://www.google.com/generate_204');
-    // MS 测试仅供参考，不参与有效性判断
-    mLater = await measureHttpLatency(ip, port, protocol, 'http://www.msftconnecttest.com/connecttest.txt');
-
-    // 判断有效性的唯一标准：Google 延迟 <= 5000ms
-    if (gLater === -1 || gLater > 5000) {
-      if (attempt < maxRetries) { await delay(200); continue; }
-      else { handleFailedProxy(hash, "Google 测试失败"); return; }
-    }
-    break;
+    if (pLater !== -1 && pLater <= 5000) break;
+    if (attempt < maxRetries) await delay(100);
   }
 
-  // 通过验证 → Available
-  statements.updateProxyAsAvailable.run(Date.now(), pLater, gLater, mLater, hash);
-  logger.info(`[Validator] ✅ ${ip}:${port} (P:${pLater} G:${gLater} M:${mLater})`);
+  if (pLater === -1 || pLater > 5000) {
+    handleFailedProxy(hash, "Ping 超时", region);
+    return;
+  }
+
+  // 核心逻辑：无论哪个区域，都先跑全量测试，measureHttpLatency 本身带有重试
+  const [gRes, mRes, hRes] = await Promise.all([
+    measureHttpLatency(ip, port, protocol, 'https://www.google.com/generate_204'),
+    measureHttpLatency(ip, port, protocol, 'http://www.microsoft.com/pki/mscorp/cps'),
+    measureHttpLatency(ip, port, protocol, 'http://connectivitycheck.platform.hicloud.com/generate_204')
+  ]);
+
+  const strategy = STRATEGIES[region] || STRATEGIES.global;
+  const success = strategy.validate(gRes.latency, mRes.latency, hRes.latency);
+
+  if (!success) {
+    handleFailedProxy(hash, `策略验证失败: 质量未达标 (G:${gRes.latency} M:${mRes.latency} H:${hRes.latency})`, region);
+    return;
+  }
+
+  // 验证通过，记录数据
+  statements.updateProxyAsAvailable.run(
+      Date.now(), 
+      pLater, 
+      gRes.latency, 
+      mRes.latency, 
+      hRes.latency, 
+      hash, 
+      region
+  );
+  logger.info(`[Validator] ✅ [${region.toUpperCase()}] ${ip}:${port} (P:${pLater} G:${gRes.latency} M:${mRes.latency} H:${hRes.latency})`);
 
   // 将此节点推入测速队列
   speedtestQueue.push(proxyObj);
@@ -100,29 +138,27 @@ async function validateProxy(proxyObj) {
 // ============= 单节点测速 =============
 
 async function speedtestProxy(proxyObj) {
-  const { hash, ip, port, protocol, status } = proxyObj;
+  const { hash, ip, port, protocol, status, region = 'global' } = proxyObj;
+  const strategy = STRATEGIES[region] || STRATEGIES.global;
   
-  const bps = await testSpeed(ip, port, protocol);
+  const bps = await testSpeed(ip, port, protocol, strategy.speedtestUrl);
   if (bps > 0) {
-    statements.updateProxySpeed.run(Date.now(), bps, bps, hash);
+    // The query requires 6 parameters: time, bps(set), bps(check 1), bps(check 2), hash, region
+    statements.updateProxySpeed.run(Date.now(), bps, bps, bps, hash, region);
     if (bps >= highPerformanceMinBps) {
-      logger.info(`[SpeedTest] 🚀 高性能! ${ip}:${port} ${(bps / 1024 / 1024).toFixed(2)} MB/s`);
+      logger.info(`[SpeedTest] 🚀 [${region.toUpperCase()}] 高性能! ${ip}:${port} ${(bps / 1024 / 1024).toFixed(2)} MB/s`);
+    } else if (status === 2 && bps < 1048576) {
+      logger.info(`[SpeedTest] 💔 [${region.toUpperCase()}] 退化: ${ip}:${port}`);
     }
-  }
-
-  // 退化检查
-  if (status === 2 && bps < 1048576) {
-    statements.updateProxyAsAvailable.run(Date.now(), 0, 0, 0, hash);
-    logger.info(`[SpeedTest] 💔 退化: ${ip}:${port}`);
   }
 }
 
 // ============= 失败处理 =============
 
-function handleFailedProxy(hash, reason) {
-  logger.debug(`[Validator] ✘ ${hash} (${reason})`);
-  statements.insertDeleted.run(hash, Date.now());
-  statements.deleteProxy.run(hash);
+function handleFailedProxy(hash, reason, region = 'global') {
+  logger.debug(`[Validator] ✘ [${region.toUpperCase()}] ${hash} (${reason})`);
+  statements.insertDeleted.run(hash, Date.now(), region);
+  statements.deleteProxy.run(hash, region);
 }
 
 // ============= 调度器：从 DB 批量拉取任务填充队列 =============
@@ -144,6 +180,8 @@ function fillValidationQueue() {
 }
 
 // ============= Worker: 验证消费者 =============
+
+
 
 async function validationWorker(workerId) {
   while (true) {

@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { config, logger } from './config.js';
-import { statements } from './db.js';
+import db, { statements } from './db.js';
 
 // 计算 protocol://ip:port 的 sha256 后 7 位
 export function computeHash(protocol, ip, port) {
@@ -48,7 +48,7 @@ function runPlugin(pluginDef) {
 
     const MAX_LIFETIME = 120000;
 
-    execFile(command, [entryAbs], { timeout: MAX_LIFETIME }, (error, stdout, stderr) => {
+    execFile(command, [entryAbs], { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
         if (error) {
             if (error.killed) {
                 logger.error(`[Scheduler] ❌ 插件 ${name} 运行超时(${MAX_LIFETIME}ms)，已被强杀。`);
@@ -72,14 +72,18 @@ function runPlugin(pluginDef) {
             if (!Array.isArray(nodes)) throw new Error('输出不是顶层 JSON 数组');
 
             const now = Date.now();
+            const region = pluginDef.region || 'global';
 
-            logger.info(`[Scheduler] 📦 ${name} 成功获取 ${nodes.length} 个节点，正在写入...`);
+            logger.info(`[Scheduler] 📦 ${name} 成功获取 ${nodes.length} 个节点，开始切片预处理(防止阻塞事件循环)...`);
 
-            // 先用 Set 对本批次的 hash 进行内存去重
+            // 内存去重与查库去重阶段 (加入 SetImmediate 防止阻塞网络线程)
             const seenHashes = new Set();
             const deduped = [];
+            let i = 0;
 
             for (const node of nodes) {
+                if (++i % 200 === 0) await new Promise(r => setImmediate(r)); // 让出事件循环
+
                 if (!node || !node.protocol || !node.ip || !node.port) continue;
 
                 const hash = computeHash(node.protocol, node.ip, node.port);
@@ -87,10 +91,10 @@ function runPlugin(pluginDef) {
                 if (seenHashes.has(hash)) continue;
                 seenHashes.add(hash);
 
-                const deletedCheck = statements.isDeleted.get(hash);
+                const deletedCheck = statements.isDeleted.get(hash, region);
                 if (deletedCheck) continue;
 
-                const existing = statements.existsProxy.get(hash);
+                const existing = statements.existsProxy.get(hash, region);
                 if (existing) continue;
 
                 deduped.push({
@@ -100,24 +104,34 @@ function runPlugin(pluginDef) {
                     port: node.port,
                     shortName: node.shortName || 'Unknown',
                     longName: node.longName || 'Unknown',
-                    remark: node.remark || name
+                    remark: node.remark || name,
+                    region: region
                 });
             }
 
-            // 按优先级排序插入
+            // 按优先级排序
             sortNodes(deduped);
 
-            let addedCount = 0;
-            for (const node of deduped) {
-                try {
-                    statements.insertOrUpdateReadyProxy.run({
-                        ...node,
-                        now
-                    });
-                    addedCount++;
-                } catch(dbErr) {
-                    logger.debug(`[Scheduler] 插入失败: ${node.hash} (${dbErr.message})`);
+            // 数据库批量写入阶段 (使用事务极大优化 I/O 并降低锁竞争)
+            const insertTx = db.transaction((batch, timestamp) => {
+                let count = 0;
+                for (const node of batch) {
+                    try {
+                        statements.insertOrUpdateReadyProxy.run({ ...node, now: timestamp });
+                        count++;
+                    } catch (err) {
+                        logger.debug(`[Scheduler] 插入冲突/异常跳过: ${node.hash}`);
+                    }
                 }
+                return count;
+            });
+
+            let addedCount = 0;
+            // 每 500 个打磨成一个事务批次，防止单一事务锁定 DB 太久
+            for (let j = 0; j < deduped.length; j += 500) {
+                const batch = deduped.slice(j, j + 500);
+                addedCount += insertTx(batch, now);
+                await new Promise(r => setImmediate(r)); // 事务间歇让出事件循环
             }
 
             logger.info(`[Scheduler] ✅ ${name} 导入完毕。有效写入: ${addedCount}, 批次内去重跳过: ${nodes.length - deduped.length}`);

@@ -29,8 +29,7 @@ external:
 # ==========================================
 runtime:
   # 并发验证线程数（最大 32，默认 8）
-  # 已优化：针对 0.1CPU/128MB 提升网络吞吐
-  validation_concurrency: 24
+  validation_concurrency: 32
 
   # 相邻检查节点的额外强制等待时间，单位毫秒 (ms)
   # 设为 0 即不等待，全速运行
@@ -50,8 +49,7 @@ runtime:
   speedtest_timeout: 10000
   
   # 测速并发线程数（最大 8，默认 1）
-  # 已优化：适当提升测速并行度
-  speedtest_concurrency: 4
+  speedtest_concurrency: 8
   
   # 高性能界定基础速率红线（单位 Bytes/s，这里为 10MB/s 转化值）
   high_performance_min_bps: 10485760
@@ -72,16 +70,31 @@ plugins:
   # 注意：插件会按照配置顺序依次执行，每次执行间隔由 plugin_interval_seconds 控制
   
   - name: "freeproxylist"
-    command: "node"
-    entry: "./plugins/freeproxylist/main.js"
     enabled: true
+    command: "node"
+    entry: "plugins/freeproxylist/main.js"
+    region: "global"
     
   - name: "proxyscrape"
-    command: "node"
-    entry: "./plugins/proxyscrape/index.js"
     enabled: true
+    command: "node"
+    entry: "plugins/proxyscrape/index.js"
+    region: "global"
+
+  - name: "freeproxylist-cn"
+    enabled: true
+    command: "node"
+    entry: "plugins/freeproxylist-cn/main.js"
+    region: "cn"
+
+  - name: "proxyscrape-cn"
+    enabled: true
+    command: "node"
+    entry: "plugins/proxyscrape-cn/index.js"
+    region: "cn"
     
   - name: "freeproxy"
     command: "node"
-    entry: "./plugins/freeproxy/main.js"
+    entry: "plugins/freeproxy/main.js"
     enabled: true
+    region: "global"
