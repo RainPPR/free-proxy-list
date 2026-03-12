@@ -203,6 +203,16 @@
       <label>Max Delay (ms)</label>
       <input type="number" id="f-delay" oninput="debounceLoad()">
     </div>
+    <div class="field">
+      <label>Format</label>
+      <select id="f-format">
+        <option value="base64">Base64</option>
+        <option value="clash">Clash</option>
+        <option value="v2ray">V2Ray</option>
+        <option value="clash-provider">Provider</option>
+        <option value="raw">Raw Format</option>
+      </select>
+    </div>
     <div class="field" style="justify-content: flex-end;">
         <button class="btn" onclick="copyLink()">Copy Link</button>
     </div>
@@ -337,8 +347,9 @@
       const delay = document.getElementById('f-delay').value;
       const page = document.getElementById('f-page').value;
       const limit = document.getElementById('f-limit').value;
+      const format = document.getElementById('f-format') ? document.getElementById('f-format').value : 'base64';
       
-      let q = '?target=' + (isRaw ? 'raw' : 'base64');
+      let q = '?target=' + (isRaw ? 'raw' : format);
       if (country) q += '&country=' + country;
       if (type) q += '&type=' + type;
       if (speed) q += '&speed=' + speed;
