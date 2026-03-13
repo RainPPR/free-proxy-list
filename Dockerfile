@@ -2,7 +2,7 @@
 FROM node:slim AS builder
 
 # 安装构建依赖 (better-sqlite3 编译需要 python3, make, g++)
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install --no-install-recommends -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 COPY package.json package-lock.json* ./
@@ -15,7 +15,7 @@ FROM pyd4vinci/scrapling:latest
 
 # 安装运行时需要的 Python 及工具
 # 注意：Node.js 环境已经存在，这里额外引入 python3 和 pip 保障 Python 插件运行
-RUN apt-get update && apt-get install -y python3 pip tcpdump curl nodejs npm && \
+RUN apt-get update && apt-get install --no-install-recommends -y python3 pip tcpdump curl nodejs npm && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
