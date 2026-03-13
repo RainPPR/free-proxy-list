@@ -6,6 +6,7 @@ FROM pyd4vinci/scrapling:latest
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
         python3 make g++ pip tcpdump curl nodejs npm tini && \
+    corepack enable && corepack prepare pnpm@latest --activate && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
