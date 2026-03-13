@@ -15,7 +15,9 @@ FROM pyd4vinci/scrapling:latest
 
 # 安装运行时需要的 Python 及工具
 # 注意：Node.js 环境已经存在，这里额外引入 python3 和 pip 保障 Python 插件运行
-RUN apt-get update && apt-get install --no-install-recommends -y python3 pip tcpdump curl nodejs npm && \
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y \
+        python3 pip tcpdump curl nodejs npm tini && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -41,4 +43,5 @@ ENV PORT=8080
 EXPOSE 8080
 
 # 以非拉高权限启动
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "src/index.js"]
