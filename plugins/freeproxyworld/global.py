@@ -64,7 +64,7 @@ def run():
     with os.fdopen(fd, "w", encoding="utf-8") as tmp:
         json.dump(final_results, tmp)
 
-    print(f"Done! Scraped {len(final_results)} proxies. Saved to: {path}")
+    print(path)
 
 
 if __name__ == "__main__":
