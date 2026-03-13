@@ -101,12 +101,12 @@ plugins:
 
   - name: "freeproxyworld-cn"
     enabled: true
-    command: "python3"
+    command: "uv"
     entry: "plugins/freeproxyworld/cn.py"
     region: "cn"
 
   - name: "freeproxyworld"
     enabled: true
-    command: "python3"
+    command: "uv"
     entry: "plugins/freeproxyworld/global.py"
     region: "global"

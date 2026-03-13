@@ -48,7 +48,13 @@ function runPlugin(pluginDef) {
 
     const MAX_LIFETIME = 1800000; // 最大运行时间延长至 30 分钟
 
-    execFile(command, [entryAbs], { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
+    let custom_args = [entryAbs]
+
+    if (command === 'uv') {
+        custom_args = ['run', entryAbs]
+    }
+
+    execFile(command, custom_args, { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
         if (error) {
             if (error.killed) {
                 logger.error(`[Scheduler] ❌ 插件 ${name} 运行超时(${MAX_LIFETIME}ms)，已被强杀。`);
