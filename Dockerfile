@@ -20,6 +20,7 @@ RUN --mount=type=bind,source=.python-version,target=.python-version \
 
 COPY package.json ./
 RUN --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
+    --mount=type=bind,source=pnpm-workspace.yaml,target=pnpm-workspace.yaml \
     --mount=type=cache,id=pnpm,target=/pnpm/store\
     pnpm install --frozen-lockfile
 
