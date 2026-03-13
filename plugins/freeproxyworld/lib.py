@@ -1,6 +1,7 @@
 import re
 from scrapling import Fetcher
 
+
 def fetch_proxies(
     protocol: str = "", country: str = "", speed: str = "", page: int = 1
 ):

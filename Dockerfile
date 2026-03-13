@@ -8,10 +8,6 @@ RUN apt-get update && \
         python3 make g++ pip tcpdump curl nodejs npm tini && \
     rm -rf /var/lib/apt/lists/*
 
-
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm ci
-
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
@@ -21,9 +17,9 @@ RUN --mount=type=bind,source=.python-version,target=.python-version \
     --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-cache && uv run scrapling install  --force
 
-# 从 builder 复制已编译好的 node_modules 过来
-COPY --from=builder /build/node_modules ./node_modules
-COPY package.json ./
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm ci
+
 COPY src/ ./src/
 COPY public/ ./public/
 COPY plugins/ ./plugins/
