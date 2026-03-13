@@ -25,7 +25,7 @@ RUN --mount=type=bind,source=.python-version,target=.python-version \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-cache && scrapling install
+    uv sync --locked --no-cache
 
 # 从 builder 复制已编译好的 node_modules 过来
 COPY --from=builder /build/node_modules ./node_modules
