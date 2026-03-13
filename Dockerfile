@@ -18,8 +18,10 @@ RUN --mount=type=bind,source=.python-version,target=.python-version \
     --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-cache && uv run scrapling install  --force
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm ci
+COPY package.json ./
+RUN --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
+    --mount=type=cache,id=pnpm,target=/pnpm/store\
+    pnpm install --frozen-lockfile
 
 COPY src/ ./src/
 COPY public/ ./public/
