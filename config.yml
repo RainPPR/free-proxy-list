@@ -98,3 +98,15 @@ plugins:
     entry: "plugins/freeproxy/main.js"
     enabled: true
     region: "global"
+
+  - name: "freeproxyworld-cn"
+    enabled: true
+    command: "python3"
+    entry: "plugins/freeproxyworld/cn.py"
+    region: "cn"
+
+  - name: "freeproxyworld"
+    enabled: true
+    command: "python3"
+    entry: "plugins/freeproxyworld/global.py"
+    region: "global"

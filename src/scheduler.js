@@ -46,7 +46,7 @@ function runPlugin(pluginDef) {
 
     logger.info(`[Scheduler] 🚀 触发插件执行: ${name} (${command} ${entryAbs})`);
 
-    const MAX_LIFETIME = 120000;
+    const MAX_LIFETIME = 1800000; // 最大运行时间延长至 30 分钟
 
     execFile(command, [entryAbs], { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
         if (error) {

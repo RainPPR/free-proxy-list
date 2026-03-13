@@ -21,10 +21,10 @@ with open("ui_mesesages.md", "w", encoding="utf-8") as f:
             "api_req_started",
             "reasoning",
             "tool",
-            'task_progress',
-            'checkpoint_created',
-            'command_output',
-            'command'
+            "task_progress",
+            "checkpoint_created",
+            "command_output",
+            "command",
         ]:
             text = item.get("text", "")
             if len(text) > 5:
