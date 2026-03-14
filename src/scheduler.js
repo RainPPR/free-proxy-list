@@ -14,6 +14,48 @@ function generateHash(proxy) {
 }
 
 /**
+ * 三级优先级排序函数
+ * 优先级：1) SOCKS优先 2) 目标国家优先 3) 信息完整优先
+ */
+function sortProxiesByPriority(proxies) {
+  const priorityCountries = ['HK', 'TW', 'SG', 'JP', 'GB', 'US', 'DE', 'KR'];
+  
+  return proxies.sort((a, b) => {
+    // 第一级：协议优先级
+    const getProtocolPriority = (p) => {
+      if (p.protocol === 'socks5' || p.protocol === 'socks4') return 1;
+      if (p.protocol === 'https') return 2;
+      return 3; // http 或其他
+    };
+    const p1 = getProtocolPriority(a);
+    const p2 = getProtocolPriority(b);
+    if (p1 !== p2) return p1 - p2;
+
+    // 第二级：国家优先级
+    const getCountryPriority = (p) => {
+      const country = p.shortName || 'ZZ';
+      if (priorityCountries.includes(country)) return 1;
+      if (country !== 'ZZ' && country !== null) return 2;
+      return 3;
+    };
+    const c1 = getCountryPriority(a);
+    const c2 = getCountryPriority(b);
+    if (c1 !== c2) return c1 - c2;
+
+    // 第三级：信息完整度（是否有城市信息）
+    const getInfoPriority = (p) => {
+      const hasCity = p.longName && p.longName !== 'Unknown' && p.longName !== p.shortName;
+      return hasCity ? 1 : 2;
+    };
+    const i1 = getInfoPriority(a);
+    const i2 = getInfoPriority(b);
+    if (i1 !== i2) return i1 - i2;
+
+    return 0; // 保持原有顺序
+  });
+}
+
+/**
  * 运行单个插件并入库 (内存模式)
  * @param {Object} plugin 插件配置对象，包含 name, region, fn 等属性
  */
@@ -35,6 +77,9 @@ async function runPlugin(plugin) {
       logger.info(`[Scheduler] ✅ ${pluginName} 完成，无数据。`);
       return;
     }
+
+    // 按三级优先级排序
+    sortProxiesByPriority(proxies);
 
     let addedCount = 0;
     const now = Date.now();
@@ -94,7 +139,7 @@ async function runScheduleBatch() {
 export function initScheduler() {
   logger.info(`[Scheduler] 初始化调度器`);
   
-  const intervalMs = (config.pluginIntervalSeconds || 14400) * 1000;
+  const intervalMs = (config.plugin_interval_seconds || 21600) * 1000;
   
   // 启动即刻执行一次
   runScheduleBatch();

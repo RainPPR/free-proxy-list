@@ -1,5 +1,5 @@
 import { logger } from './config.js';
-import { closeDb } from './db.js';
+import { closeDb, reclassifyHighPerformanceNodes } from './db.js';
 import { initScheduler, stopScheduler } from './scheduler.js';
 import { startValidatorEngine } from './validator.js';
 import { initMaintenance, stopMaintenance } from './maintenance.js';
@@ -23,7 +23,17 @@ async function bootstrap() {
   // 3. 挂载过期/软删除节点的清理机制
   initMaintenance();
 
-  // 4. 启动核心大循环引流管线 (永不 return)
+  // 4. 重新分类高性能节点（根据当前配置的 highPerformanceMinBps 标准）
+  // 扫描所有区域（global 和 cn）的 status=2 节点，检查速度是否达标
+  // 这样当用户修改了高性能标准后，重启系统会自动重新调整节点分类
+  try {
+    const result = reclassifyHighPerformanceNodes(); // 不传参数，处理所有区域
+    logger.info(`[System] 高性能节点重分类完成: 总计 ${result.total}，保持 ${result.kept}，降级 ${result.demoted}`);
+  } catch (err) {
+    logger.error(`[System] 高性能节点重分类失败: ${err.message}`);
+  }
+
+  // 5. 启动核心大循环引流管线 (永不 return)
   startValidatorEngine();
 }
 
