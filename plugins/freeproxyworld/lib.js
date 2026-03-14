@@ -1,24 +1,18 @@
 import { chromium } from 'playwright-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
-import fs from 'node:fs';
+import { FingerprintGenerator } from 'fingerprint-generator';
+import { FingerprintInjector } from 'fingerprint-injector';
+import { createCursor } from 'ghost-cursor';
 import * as cheerio from 'cheerio';
 
-// 使用 stealth 插件
+// 基础 Stealth 插件
 chromium.use(stealth());
 
-/**
- * 极致优化：资源拦截黑名单
- * 包含广告、追踪、分析及非必要 CDN 资源域名关键字
- */
-const BLOCK_RESOURCE_PATTERNS = [
-    'google', 'analytics', 'googletagmanager', 'googlesyndication',
-    'cloudflareinsights', 'beacon.min.js', 'doubleclick', 'amazon-adsystem',
-    'facebook.net'
-];
+const fingerprintGenerator = new FingerprintGenerator();
+const fingerprintInjector = new FingerprintInjector();
 
 /**
- * 局部浏览器池管理器，用于解决内存泄漏
- * 每 20 个页面强制冷重启
+ * 局部浏览器池管理器 (UC 模式复刻)
  */
 class BrowserManager {
     constructor() {
@@ -30,6 +24,8 @@ class BrowserManager {
     async getPage() {
         if (!this.browser || this.pageCount >= this.MAX_PAGES_BEFORE_RESTART) {
             await this.close();
+            
+            // 复刻 UC 模式核心：使用 --headless=new 驱动完整 Chrome 引擎
             this.browser = await chromium.launch({
                 headless: true,
                 args: [
@@ -38,32 +34,42 @@ class BrowserManager {
                     '--disable-dev-shm-usage',
                     '--disable-accelerated-2d-canvas',
                     '--disable-gpu',
-                    '--no-first-run'
+                    '--no-first-run',
+                    '--window-size=1920,1080',
+                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
                 ]
             });
             this.pageCount = 0;
         }
 
+        // 生成真实设备指纹
+        const fingerprint = fingerprintGenerator.getFingerprint({
+            devices: ['desktop'],
+            browsers: [{ name: 'chrome', minVersion: 120 }]
+        });
+
         const context = await this.browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1280, height: 800 }
+            ...fingerprint.fingerprint.browserContextOptions,
+            viewport: { width: 1920, height: 1080 }
         });
         
         const pageInstance = await context.newPage();
+
+        // 注入工业级指纹 (解决 CDP 检测)
+        await fingerprintInjector.attachFingerprintToPlaywright(context, fingerprint);
         
-        // 极致性能优化：黑名单 + 资源类型双重拦截
+        // 极致性能优化：黑名单 + 资源类型拦截
         await pageInstance.route('**/*', (route) => {
             const request = route.request();
             const url = request.url().toLowerCase();
             const type = request.resourceType();
 
-            // 1. 资源类型拦截：图片、样式表、字体、媒体
             if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
                 return route.abort();
             }
 
-            // 2. 域名/脚本黑名单检测 (广告与追踪)
-            if (BLOCK_RESOURCE_PATTERNS.some(p => url.includes(p))) {
+            const blockPatterns = ['google', 'analytics', 'googletagmanager', 'cloudflareinsights', 'beacon.min.js'];
+            if (blockPatterns.some(p => url.includes(p))) {
                 return route.abort();
             }
 
@@ -76,9 +82,7 @@ class BrowserManager {
 
     async close() {
         if (this.browser) {
-            try {
-                await this.browser.close();
-            } catch (e) { /* ignore */ }
+            try { await this.browser.close(); } catch (e) { /* ignore */ }
             this.browser = null;
         }
     }
@@ -94,27 +98,29 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
         instance = await manager.getPage();
         const { page: pageInstance, context } = instance;
 
-        // waitUntil 使用 domcontentloaded 以加速，因为后续资源都被拦截了
+        // 模拟 UC 的 uc_open_with_reconnect：先通过 goto 出发，但不立即解析
         const response = await pageInstance.goto(url, { 
             waitUntil: 'domcontentloaded', 
-            timeout: 45000 
+            timeout: 60000 
         });
 
-        if (response && !response.ok()) {
-            console.warn(`[Playwright] 状态异常: ${response.status()} for ${url}`);
+        if (response && response.status() === 403) {
+            console.warn(`[Playwright] 检测到 Cloudflare 盾 (403)，开始执行行为模拟绕过...`);
+            // 模拟人类行为：鼠标平滑滑动
+            const cursor = createCursor(pageInstance);
+            await cursor.move({ x: Math.random() * 500, y: Math.random() * 500 });
+            await new Promise(r => setTimeout(r, 5000 + Math.random() * 3000)); // 等待 5-8 秒
         }
 
         const html = await pageInstance.content();
         const $ = cheerio.load(html);
         const results = [];
 
-        // 根据 example.html 源码分析，Proxy 数据在 <tbody> 的 <tr> 中
         $('table.table tbody tr').each((_, row) => {
             const cells = $(row).find('td');
             if (cells.length < 4) return;
 
             const ip = $(cells[0]).text().trim();
-            // 验证 IP 格式，排除广告行
             if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return;
 
             const portText = $(cells[1]).find('a').length > 0 
@@ -124,7 +130,6 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
             const port = parseInt(portText, 10);
             if (isNaN(port)) return;
 
-            // 国家与城市提取
             const countryNode = $(cells[2]).find('a[href*="country="]');
             let countryCode = country || 'Unknown';
             let countryName = 'Unknown';
@@ -161,9 +166,6 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
     }
 }
 
-/**
- * 彻底释放资源
- */
 export async function closeBrowser() {
     await manager.close();
 }
