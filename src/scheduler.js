@@ -6,10 +6,18 @@ import os from 'node:os';
 import { config, logger, globalState } from './config.js';
 import db, { statements } from './db.js';
 
-// 清理所有匹配模式的临时 JSON 文件
+// 清理并确保临时目录存在
 function cleanupOldTempFiles() {
     try {
         const tmpDir = os.tmpdir();
+        
+        // 确保目录存在
+        if (!fs.existsSync(tmpDir)) {
+            fs.mkdirSync(tmpDir, { recursive: true });
+            logger.info(`[Scheduler] 📂 创建临时目录: ${tmpDir}`);
+            return;
+        }
+
         const files = fs.readdirSync(tmpDir);
         let count = 0;
         for (const file of files) {

@@ -24,7 +24,8 @@ FROM node:24-trixie-slim
 
 ENV NODE_ENV=production \
     PORT=8080 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    TMPDIR=/app/data/temp
 
 WORKDIR /app
 
