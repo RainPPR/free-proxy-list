@@ -1,37 +1,50 @@
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { chromium } from 'playwright-chromium';
 import fs from 'node:fs';
 import * as cheerio from 'cheerio';
 
-const BASE_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-    'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache',
-    'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-    'Sec-Ch-Ua-Mobile': '?0',
-    'Sec-Ch-Ua-Platform': '"Windows"',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-    'Upgrade-Insecure-Requests': '1',
-    'Referer': 'https://www.google.com/'
-};
-
+/**
+ * 使用 Playwright 执行极致内存优化的抓取
+ */
 export async function fetchProxies({ protocol = '', country = '', speed = '', page = 1 }) {
     const url = `https://www.freeproxy.world/?type=${protocol}&country=${country}&speed=${speed}&page=${page}`;
     
+    let browser = null;
     try {
-        const response = await fetch(url, {
-            headers: BASE_HEADERS,
-            method: 'GET'
+        // 启动极致简化的浏览器实例
+        browser = await chromium.launch({
+            headless: true,
+            args: [
+                '--disable-setuid-sandbox',
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process'
+            ]
         });
 
-        if (!response.ok) return [];
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        });
 
-        const html = await response.text();
+        const pageInstance = await context.newPage();
+
+        // 核心优化：拦截并禁用所有非 HTML 资源，极大降低内存占用
+        await pageInstance.route('**/*', (route) => {
+            const type = route.request().resourceType();
+            if (['image', 'stylesheet', 'font', 'media', 'other'].includes(type)) {
+                return route.abort();
+            }
+            return route.continue();
+        });
+
+        // 导航至目标页面
+        await pageInstance.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+        // 获取渲染后的 HTML
+        const html = await pageInstance.content();
         const $ = cheerio.load(html);
         const results = [];
 
@@ -75,6 +88,9 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
 
         return results;
     } catch (err) {
+        console.error(`[Playwright] 抓取失败: ${err.message}`);
         return [];
+    } finally {
+        if (browser) await browser.close();
     }
 }
