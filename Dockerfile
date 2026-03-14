@@ -15,6 +15,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 FROM dependencies AS builder
 COPY . .
+RUN mkdir -p /app/data
 
 FROM gcr.io/distroless/nodejs24-debian13
 
