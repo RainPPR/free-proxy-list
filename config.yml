@@ -29,7 +29,7 @@ external:
 # ==========================================
 runtime:
   # 并发验证线程数（最大 32，默认 8）
-  validation_concurrency: 16
+  validation_concurrency: 32
 
   # 相邻检查节点的额外强制等待时间，单位毫秒 (ms)
   # 设为 0 即不等待，全速运行
@@ -49,7 +49,7 @@ runtime:
   speedtest_timeout: 10000
   
   # 测速并发线程数（最大 8，默认 1）
-  speedtest_concurrency: 4
+  speedtest_concurrency: 8
   
   # 高性能界定基础速率红线（单位 Bytes/s，这里为 10MB/s 转化值）
   high_performance_min_bps: 10485760
