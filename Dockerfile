@@ -17,7 +17,7 @@ FROM dependencies AS builder
 COPY . .
 RUN mkdir -p /app/data
 
-FROM gcr.io/distroless/nodejs24-debian13
+FROM node:24-trixie-slim
 
 ENV NODE_ENV=production \
     PORT=8080 \
