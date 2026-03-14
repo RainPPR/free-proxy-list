@@ -17,7 +17,7 @@ class BrowserManager {
         // 如果页面数超限或浏览器没启动，执行冷启动
         if (!this.browser || this.pageCount >= this.MAX_PAGES_BEFORE_RESTART) {
             await this.close();
-            console.log(`[Playwright] 启动浏览器引擎 (已抓取 ${this.pageCount} 页)`);
+            // console.log(`[Playwright] 启动浏览器引擎 (已抓取 ${this.pageCount} 页)`);
             this.browser = await chromium.launch({
                 headless: true,
                 args: [
@@ -88,7 +88,7 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
         const results = [];
 
         const rows = $('tr');
-        console.log(`[Playwright] 抓取完成: ${url}, Rows: ${rows.length}, Size: ${(html.length/1024).toFixed(1)}KB`);
+        // console.log(`[Playwright] 抓取完成: ${url}, Rows: ${rows.length}, Size: ${(html.length/1024).toFixed(1)}KB`);
 
         rows.each((_, row) => {
             const cells = $(row).find('td');
