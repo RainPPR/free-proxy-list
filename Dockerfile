@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# 安装构建时需要的依赖以及 Playwright 运行所需的系统库（用于后续导出/测试）
+# 安装构建时需要的依赖以及 Playwright 运行所需的系统库
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
@@ -29,7 +29,7 @@ FROM dependencies AS builder
 COPY . .
 RUN mkdir -p /app/data
 
-# 阶段 3：运行阶段 (极致精简)
+# 阶段 3：运行阶段
 FROM node:24-trixie-slim
 
 ENV NODE_ENV=production \
@@ -49,13 +49,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libgbm1 libpango-1.0-0 libcairo2 libasound2 && \
     rm -rf /var/lib/apt/lists/*
 
-# 从构建阶段复制所有文件 (包含 node_modules 和 playwright 缓存)
-# 注意：Playwright 默认将浏览器安装在 ~/.cache/ms-playwright，我们将缓存目录也复制过来
+# 从构建阶段复制所有文件
 COPY --from=builder /app /app
 COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
 EXPOSE 8080
 
-# 使用 tini 确保进程能够正确处理信号并清理僵尸进程
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "src/index.js"]

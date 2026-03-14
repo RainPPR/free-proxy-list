@@ -1,6 +1,20 @@
-import { chromium } from 'playwright-chromium';
+import { chromium } from 'playwright-extra';
+import stealth from 'puppeteer-extra-plugin-stealth';
 import fs from 'node:fs';
 import * as cheerio from 'cheerio';
+
+// 使用 stealth 插件
+chromium.use(stealth());
+
+/**
+ * 极致优化：资源拦截黑名单
+ * 包含广告、追踪、分析及非必要 CDN 资源域名关键字
+ */
+const BLOCK_RESOURCE_PATTERNS = [
+    'google', 'analytics', 'googletagmanager', 'googlesyndication',
+    'cloudflareinsights', 'beacon.min.js', 'doubleclick', 'amazon-adsystem',
+    'facebook.net'
+];
 
 /**
  * 局部浏览器池管理器，用于解决内存泄漏
@@ -14,10 +28,8 @@ class BrowserManager {
     }
 
     async getPage() {
-        // 如果页面数超限或浏览器没启动，执行冷启动
         if (!this.browser || this.pageCount >= this.MAX_PAGES_BEFORE_RESTART) {
             await this.close();
-            // console.log(`[Playwright] 启动浏览器引擎 (已抓取 ${this.pageCount} 页)`);
             this.browser = await chromium.launch({
                 headless: true,
                 args: [
@@ -39,12 +51,22 @@ class BrowserManager {
         
         const pageInstance = await context.newPage();
         
-        // 资源拦截优化：只保留文档和脚本（如果需要 JS 渲染）
+        // 极致性能优化：黑名单 + 资源类型双重拦截
         await pageInstance.route('**/*', (route) => {
-            const type = route.request().resourceType();
+            const request = route.request();
+            const url = request.url().toLowerCase();
+            const type = request.resourceType();
+
+            // 1. 资源类型拦截：图片、样式表、字体、媒体
             if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
                 return route.abort();
             }
+
+            // 2. 域名/脚本黑名单检测 (广告与追踪)
+            if (BLOCK_RESOURCE_PATTERNS.some(p => url.includes(p))) {
+                return route.abort();
+            }
+
             return route.continue();
         });
 
@@ -62,7 +84,6 @@ class BrowserManager {
     }
 }
 
-// 全局单例管理器
 const manager = new BrowserManager();
 
 export async function fetchProxies({ protocol = '', country = '', speed = '', page = 1 }) {
@@ -73,28 +94,27 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
         instance = await manager.getPage();
         const { page: pageInstance, context } = instance;
 
-        // 尝试使用更稳妥的等待方式
+        // waitUntil 使用 domcontentloaded 以加速，因为后续资源都被拦截了
         const response = await pageInstance.goto(url, { 
             waitUntil: 'domcontentloaded', 
             timeout: 45000 
         });
 
         if (response && !response.ok()) {
-            console.warn(`[Playwright] 页面状态异常: ${response.status()} for ${url}`);
+            console.warn(`[Playwright] 状态异常: ${response.status()} for ${url}`);
         }
 
         const html = await pageInstance.content();
         const $ = cheerio.load(html);
         const results = [];
 
-        const rows = $('tr');
-        // console.log(`[Playwright] 抓取完成: ${url}, Rows: ${rows.length}, Size: ${(html.length/1024).toFixed(1)}KB`);
-
-        rows.each((_, row) => {
+        // 根据 example.html 源码分析，Proxy 数据在 <tbody> 的 <tr> 中
+        $('table.table tbody tr').each((_, row) => {
             const cells = $(row).find('td');
             if (cells.length < 4) return;
 
             const ip = $(cells[0]).text().trim();
+            // 验证 IP 格式，排除广告行
             if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return;
 
             const portText = $(cells[1]).find('a').length > 0 
@@ -104,6 +124,7 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
             const port = parseInt(portText, 10);
             if (isNaN(port)) return;
 
+            // 国家与城市提取
             const countryNode = $(cells[2]).find('a[href*="country="]');
             let countryCode = country || 'Unknown';
             let countryName = 'Unknown';
@@ -112,8 +133,7 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
                 const href = countryNode.attr('href') || '';
                 const cMatch = href.match(/country=([A-Z]+)/);
                 if (cMatch) countryCode = cMatch[1];
-                const cTitle = countryNode.attr('title') || '';
-                countryName = cTitle || countryNode.text().trim();
+                countryName = (countryNode.attr('title') || countryNode.text()).trim();
             }
 
             const city = $(cells[3]).find('span').first().text().trim();
@@ -132,7 +152,7 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
         await context.close();
         return results;
     } catch (err) {
-        console.error(`[Playwright] 抓取异常 (${url}): ${err.message}`);
+        console.error(`[Playwright] 抓取失败 (${url}): ${err.message}`);
         if (instance) {
             if (instance.page) try { await instance.page.close(); } catch (e) { /* ignore */ }
             if (instance.context) try { await instance.context.close(); } catch (e) { /* ignore */ }
