@@ -2,8 +2,29 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import { config, logger, globalState } from './config.js';
 import db, { statements } from './db.js';
+
+// 清理所有匹配模式的临时 JSON 文件
+function cleanupOldTempFiles() {
+    try {
+        const tmpDir = os.tmpdir();
+        const files = fs.readdirSync(tmpDir);
+        let count = 0;
+        for (const file of files) {
+            if (file.startsWith('freeproxy-') || file.startsWith('proxyscrape-')) {
+                try {
+                    fs.unlinkSync(path.join(tmpDir, file));
+                    count++;
+                } catch (e) { /* ignore busy files */ }
+            }
+        }
+        if (count > 0) logger.info(`[Scheduler] 🧹 启动清理: 移除了 ${count} 个残留临时文件`);
+    } catch (err) {
+        logger.error('[Scheduler] ❌ 启动清理失败:', err.message);
+    }
+}
 
 // 计算 protocol://ip:port 的 sha256 后 7 位
 export function computeHash(protocol, ip, port) {
@@ -76,6 +97,10 @@ function runPlugin(pluginDef) {
 
                 const fileContent = fs.readFileSync(outputPath, 'utf-8');
                 let nodes = JSON.parse(fileContent);
+                
+                // 极致优化：一旦解析完成，立即删除磁盘文件，不等待入库循环
+                try { fs.unlinkSync(outputPath); } catch (e) { /* ignore */ }
+
                 if (!Array.isArray(nodes)) throw new Error('Invalid JSON array');
 
                 const region = pluginDef.region || 'global';
@@ -134,10 +159,13 @@ function runPlugin(pluginDef) {
                 nodes = null;
                 currentBatch = null;
 
-                try { fs.unlinkSync(outputPath); } catch (e) { /* ignore */ }
-
             } catch (err) {
                 logger.error(`[Scheduler] ❌ ${name} 数据处理失败:`, err.message);
+                // 确保在出错路径下也尝试清理
+                try {
+                    const outputPath = stdout?.trim();
+                    if (outputPath && fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+                } catch (e) { /* ignore */ }
             } finally {
                 resolve();
             }
@@ -167,6 +195,9 @@ let pluginInterval = null;
 
 export function initScheduler() {
     logger.info(`[Scheduler] 初始化调度器 (单线程资源优化版)`);
+
+    // 启动前执行一次彻底的临时文件清理
+    cleanupOldTempFiles();
 
     config.plugins.forEach(p => {
         if (p.enabled) queuePlugin(p);
