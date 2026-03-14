@@ -1,7 +1,4 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * freeproxydb 插件 (全球版)
@@ -21,14 +18,14 @@ async function fetchPage(pageIndex) {
   }
 }
 
-async function run() {
+export default async function fetch() {
   const results = [];
   
   try {
     // 抓取第一页获取元数据
     const firstPage = await fetchPage(1);
     if (!firstPage || !firstPage.data || !Array.isArray(firstPage.data.data)) {
-      process.exit(1);
+      return [];
     }
 
     results.push(...firstPage.data.data);
@@ -74,16 +71,8 @@ async function run() {
       };
     }).filter(Boolean);
 
-    // 写入临时文件
-    const outputPath = join(tmpdir(), `freeproxydb-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    // 输出文件路径到 stdout
-    console.log(outputPath);
-    process.exit(0);
+    return totalNodes;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

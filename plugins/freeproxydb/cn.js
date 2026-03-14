@@ -1,7 +1,4 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * freeproxydb-cn 插件
@@ -21,13 +18,13 @@ async function fetchPage(pageIndex) {
   }
 }
 
-async function run() {
+export default async function fetch() {
   const results = [];
   
   try {
     const firstPage = await fetchPage(1);
     if (!firstPage || !firstPage.data || !Array.isArray(firstPage.data.data)) {
-      process.exit(1);
+      return [];
     }
 
     results.push(...firstPage.data.data);
@@ -70,14 +67,8 @@ async function run() {
       };
     }).filter(Boolean);
 
-    const outputPath = join(tmpdir(), `freeproxydb-cn-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    console.log(outputPath);
-    process.exit(0);
+    return totalNodes;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

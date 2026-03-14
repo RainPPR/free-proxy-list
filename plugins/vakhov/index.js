@@ -1,7 +1,4 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * vakhov 插件
@@ -9,7 +6,7 @@ import fs from 'node:fs';
  * 格式：JSON 数组，包含 host, ip, port, country_code, city, 以及多种协议标识
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://raw.githubusercontent.com/vakhov/fresh-proxy-list/refs/heads/master/proxylist.json';
   
   try {
@@ -52,16 +49,8 @@ async function run() {
       }
     }
 
-    // 写入临时文件
-    const outputPath = join(tmpdir(), `vakhov-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    // 输出文件路径到 stdout
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

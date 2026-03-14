@@ -1,14 +1,11 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * sockslist-us 插件 (全球版)
  * 目标：从 sockslist.us/Json 获取代理列表
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://sockslist.us/Json';
   
   try {
@@ -43,14 +40,8 @@ async function run() {
       }
     }
 
-    const outputPath = join(tmpdir(), `sockslistus-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

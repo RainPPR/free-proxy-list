@@ -1,14 +1,11 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * vakhov-cn 插件
  * 目标：从 vakhov/fresh-proxy-list 获取代理列表并仅筛选国家代码为 CN 的节点
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://raw.githubusercontent.com/vakhov/fresh-proxy-list/refs/heads/master/proxylist.json';
   
   try {
@@ -54,16 +51,8 @@ async function run() {
       }
     }
 
-    // 写入临时文件
-    const outputPath = join(tmpdir(), `vakhov-cn-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    // 输出文件路径到 stdout
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

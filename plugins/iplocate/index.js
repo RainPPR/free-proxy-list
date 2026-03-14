@@ -1,7 +1,4 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * iplocate 插件
@@ -9,7 +6,7 @@ import fs from 'node:fs';
  * 格式：protocol://ip:port
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/all-proxies.txt';
   
   try {
@@ -44,16 +41,8 @@ async function run() {
       }
     }
 
-    // 写入临时文件
-    const outputPath = join(tmpdir(), `iplocate-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    // 输出文件路径到 stdout
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

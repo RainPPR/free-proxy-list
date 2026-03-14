@@ -1,14 +1,11 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * redscrape-cn 插件
  * 目标：筛选国家代码为 CN 的节点
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://free.redscrape.com/api/proxies?format=json';
   
   try {
@@ -39,14 +36,8 @@ async function run() {
       }
     }
 
-    const outputPath = join(tmpdir(), `redscrape-cn-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

@@ -1,7 +1,4 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * monosans 插件
@@ -9,7 +6,7 @@ import fs from 'node:fs';
  * 格式：数组对象，包含 protocol, host, port, geolocation 等
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies_pretty.json';
   
   try {
@@ -40,17 +37,9 @@ async function run() {
       }
     }
 
-    // 写入临时文件
-    const outputPath = join(tmpdir(), `monosans-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    // 输出文件路径到 stdout
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
     // console.error(err.message);
-    process.exit(1);
+    return [];
   }
 }
-
-run();

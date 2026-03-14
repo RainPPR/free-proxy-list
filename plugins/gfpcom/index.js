@@ -1,7 +1,4 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 import { URL } from 'node:url';
 
 /**
@@ -54,7 +51,7 @@ async function fetchFromEndpoint(url) {
   }
 }
 
-async function run() {
+export default async function fetch() {
   const endpoints = [
     'https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/http.txt',
     'https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/https.txt',
@@ -71,13 +68,5 @@ async function run() {
     totalNodes = totalNodes.concat(arr);
   }
 
-  // 写入临时文件
-  const outputPath = join(tmpdir(), `gfpcom-${Date.now()}.json`);
-  fs.writeFileSync(outputPath, JSON.stringify(totalNodes), 'utf-8');
-  
-  // 输出文件路径到 stdout
-  console.log(outputPath);
-  process.exit(0);
+  return totalNodes;
 }
-
-run();

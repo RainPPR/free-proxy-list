@@ -1,7 +1,4 @@
 import https from 'https';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 import * as cheerio from 'cheerio';
 
 const ENDPOINTS = [
@@ -85,7 +82,7 @@ function parseTable(html, isSocksPage) {
   return rows;
 }
 
-async function run() {
+export default async function fetch() {
   try {
     const allProxies = new Map();
     
@@ -109,15 +106,8 @@ async function run() {
     
     const result = Array.from(allProxies.values());
     
-    // 写入临时文件
-    const outputPath = join(tmpdir(), `freeproxy-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(result), 'utf-8');
-    console.log(outputPath);
-    
-    process.exit(0);
+    return totalNodes;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

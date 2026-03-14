@@ -1,7 +1,6 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
+
+
 
 /**
  * ProxyScrape 高并发型接口提取器
@@ -39,7 +38,7 @@ async function fetchFromEndpoint(protocol, url) {
   }
 }
 
-async function run() {
+export default async function fetch() {
   const endpoints = [
     { p: 'http', u: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all' },
     { p: 'socks4', u: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks4&timeout=10000&country=all' },
@@ -55,13 +54,5 @@ async function run() {
     totalNodes = totalNodes.concat(arr);
   }
 
-  // 写入临时文件
-  const outputPath = join(tmpdir(), `proxyscrape-${Date.now()}.json`);
-  fs.writeFileSync(outputPath, JSON.stringify(totalNodes), 'utf-8');
-  
-  // 输出文件路径到 stdout
-  console.log(outputPath);
-  process.exit(0);
-}
-
-run();
+  return totalNodes;
+}

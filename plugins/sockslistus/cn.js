@@ -1,14 +1,11 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * sockslist-us-cn 插件 (中国区专有 API)
  * 目标：从专用 API 获取中国区代理
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://sockslist.us/Api?request=display&country=CHN&level=all&token=free';
   
   try {
@@ -38,14 +35,8 @@ async function run() {
       }
     }
 
-    const outputPath = join(tmpdir(), `sockslistus-cn-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

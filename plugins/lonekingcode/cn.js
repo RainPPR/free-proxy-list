@@ -1,7 +1,4 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * LoneKingCode-cn 插件
@@ -42,7 +39,7 @@ async function fetchFromEndpoint(url) {
   }
 }
 
-async function run() {
+export default async function fetch() {
   const endpoints = [
     'https://raw.githubusercontent.com/LoneKingCode/free-proxy-db/refs/heads/main/proxies/http.json',
     'https://raw.githubusercontent.com/LoneKingCode/free-proxy-db/refs/heads/main/proxies/socks4.json',
@@ -58,11 +55,5 @@ async function run() {
     totalNodes = totalNodes.concat(arr);
   }
 
-  const outputPath = join(tmpdir(), `lonekingcode-cn-${Date.now()}.json`);
-  fs.writeFileSync(outputPath, JSON.stringify(totalNodes), 'utf-8');
-  
-  console.log(outputPath);
-  process.exit(0);
+  return totalNodes;
 }
-
-run();

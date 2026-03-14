@@ -1,14 +1,11 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * redscrape 插件
  * 目标：从 RedScrape API 获取代理列表
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://free.redscrape.com/api/proxies?format=json';
   
   try {
@@ -40,16 +37,8 @@ async function run() {
       }
     }
 
-    // 写入临时文件
-    const outputPath = join(tmpdir(), `redscrape-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    // 输出文件路径到 stdout
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

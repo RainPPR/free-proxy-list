@@ -36,8 +36,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         tini curl python3 && \
     rm -rf /var/lib/apt/lists/*
 
-# 生产环境仅需 dist 目录 (内含 bundle、各插件 bundle 及 better_sqlite3.node)
-COPY --from=builder /app/dist /app/dist
+# 生产环境仅需 dist/bundle.cjs (内含所有插件逻辑)
+COPY --from=builder /app/dist/bundle.cjs /app/dist/bundle.cjs
+COPY --from=builder /app/dist/better_sqlite3.node /app/dist/better_sqlite3.node
+
 
 # 仍然需要这些基础底层 Addon 支撑结构
 COPY --from=builder /app/node_modules/better-sqlite3 /app/node_modules/better-sqlite3

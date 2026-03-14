@@ -1,7 +1,6 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
-import fs from 'node:fs';
+import { basename } from 'node:path';
+
 
 /**
  * roosterkid-cn 插件
@@ -49,7 +48,7 @@ async function fetchFromEndpoint(url) {
   }
 }
 
-async function run() {
+export default async function fetch() {
   const endpoints = [
     'https://raw.githubusercontent.com/roosterkid/openproxylist/refs/heads/main/HTTPS.txt',
     'https://raw.githubusercontent.com/roosterkid/openproxylist/refs/heads/main/SOCKS4.txt',
@@ -65,11 +64,6 @@ async function run() {
     totalNodes = totalNodes.concat(arr);
   }
 
-  const outputPath = join(tmpdir(), `roosterkid-cn-${Date.now()}.json`);
-  fs.writeFileSync(outputPath, JSON.stringify(totalNodes), 'utf-8');
-  
-  console.log(outputPath);
-  process.exit(0);
+  return totalNodes;
 }
 
-run();

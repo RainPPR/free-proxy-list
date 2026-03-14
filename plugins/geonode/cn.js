@@ -1,7 +1,4 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * geonode-cn 插件
@@ -18,13 +15,13 @@ async function fetchPage(page) {
   }
 }
 
-async function run() {
+export default async function fetch() {
   const results = [];
   
   try {
     const firstPage = await fetchPage(1);
     if (!firstPage || !Array.isArray(firstPage.data)) {
-      process.exit(1);
+      return [];
     }
 
     results.push(...firstPage.data);
@@ -68,14 +65,8 @@ async function run() {
       };
     }).filter(Boolean);
 
-    const outputPath = join(tmpdir(), `geonode-cn-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    console.log(outputPath);
-    process.exit(0);
+    return totalNodes;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();

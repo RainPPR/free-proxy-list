@@ -1,8 +1,6 @@
 import https from 'https';
 import zlib from 'zlib';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
+
 
 /**
  * FreeProxyList CN 爬取器
@@ -11,7 +9,7 @@ import fs from 'node:fs';
 
 const TARGET_URL = 'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@master/proxies/all/data.json';
 
-async function run() {
+export default async function fetch() {
   try {
     const response = await new Promise((resolve, reject) => {
       https.get(TARGET_URL, {
@@ -37,8 +35,7 @@ async function run() {
     });
 
     if (response.statusCode !== 200) {
-      process.exit(0);
-      return;
+      return [];
     }
 
     let stream = response;
@@ -62,8 +59,7 @@ async function run() {
     const list = JSON.parse(cleaned);
 
     if (!Array.isArray(list)) {
-      process.exit(0);
-      return;
+      return [];
     }
 
     const results = [];
@@ -73,7 +69,6 @@ async function run() {
       const geo = item.geolocation || {};
       const country = geo.country || 'Unknown';
       
-      // 核心过滤逻辑：仅保留中国节点
       if (country !== 'CN') continue;
 
       const city = geo.city || '';
@@ -88,15 +83,9 @@ async function run() {
       });
     }
 
-    const outputPath = join(tmpdir(), `freeproxylist-cn-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(results), 'utf-8');
-    
-    console.log(outputPath);
-    process.exit(0);
+    return results;
 
   } catch (err) {
-    process.exit(0);
+    return [];
   }
 }
-
-run();

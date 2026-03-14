@@ -1,7 +1,5 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
-import fs from 'node:fs';
+import { basename } from 'node:path';
 
 /**
  * thespeedx 插件
@@ -42,7 +40,7 @@ async function fetchFromEndpoint(url) {
   }
 }
 
-async function run() {
+export default async function fetch() {
   const endpoints = [
     'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/http.txt',
     'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/socks4.txt',
@@ -58,13 +56,5 @@ async function run() {
     totalNodes = totalNodes.concat(arr);
   }
 
-  // 写入临时文件
-  const outputPath = join(tmpdir(), `thespeedx-${Date.now()}.json`);
-  fs.writeFileSync(outputPath, JSON.stringify(totalNodes), 'utf-8');
-  
-  // 输出文件路径到 stdout
-  console.log(outputPath);
-  process.exit(0);
+  return totalNodes;
 }
-
-run();

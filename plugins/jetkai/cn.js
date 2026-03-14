@@ -1,14 +1,11 @@
 import axios from 'axios';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import fs from 'node:fs';
 
 /**
  * jetkai-cn 插件
  * 目标：筛选国家代码为 CN 的节点
  */
 
-async function run() {
+export default async function fetch() {
   const url = 'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/json/proxies-advanced.json';
   
   try {
@@ -44,14 +41,8 @@ async function run() {
       }
     }
 
-    const outputPath = join(tmpdir(), `jetkai-cn-${Date.now()}.json`);
-    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
-    
-    console.log(outputPath);
-    process.exit(0);
+    return out;
   } catch (err) {
-    process.exit(1);
+    return [];
   }
 }
-
-run();
