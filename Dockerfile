@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 FROM node:24-trixie-slim AS dependencies
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -16,8 +18,8 @@ COPY . .
 
 FROM gcr.io/distroless/nodejs24-debian13
 
-ENV NODE_ENV=production \
-    PORT=8080
+ENV NODE_ENV=production PORT=8080 \
+    DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
