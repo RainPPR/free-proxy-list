@@ -19,14 +19,13 @@ RUN mkdir -p /app/data
 
 FROM gcr.io/distroless/nodejs24-debian13
 
-ENV NODE_ENV=production PORT=8080 \
+ENV NODE_ENV=production \
+    PORT=8080 \
     DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-COPY --from=builder --chown=65532:65532 /app /app
+COPY --from=builder /app /app
 
-USER 65532:65532
 EXPOSE 8080
-
 CMD ["src/index.js"]
