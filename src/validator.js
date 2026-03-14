@@ -2,7 +2,7 @@ import net from 'node:net';
 import axios from 'axios';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import { statements } from './db.js';
-import { config, logger } from './config.js';
+import { config, logger, globalState } from './config.js';
 import { testSpeed } from './speedtest.js';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -18,9 +18,6 @@ const {
 } = config.runtime;
 
 // ============= 共享任务队列 =============
-// 核心设计：一个调度器线程独占 DB 读取，分发到队列；多个 worker 从队列消费
-// 这样就不会出现多个 worker 同时拿到同一个节点的问题
-
 const validationQueue = [];    // 待验证队列
 const speedtestQueue = [];     // 待测速队列
 const processingSet = new Set(); // 正在被处理的 hash 集合（防重入）
@@ -31,7 +28,7 @@ async function pingHost(host, port) {
   return new Promise((resolve) => {
     const sTime = Date.now();
     const sock = new net.Socket();
-    sock.setTimeout(timeoutMs);
+    sock.setTimeout(2000);
 
     sock.on('connect', () => { sock.destroy(); resolve(Date.now() - sTime); });
     sock.on('error', () => { sock.destroy(); resolve(-1); });
@@ -46,7 +43,6 @@ async function measureHttpLatency(host, port, protocol, url) {
     const sTime = Date.now();
     const options = {
       timeout: timeoutMs,
-      // 放宽状态码判定：2xx 到 3xx 均视为通畅
       validateStatus: (status) => status >= 200 && status < 400,
       maxRedirects: 5
     };
@@ -76,22 +72,20 @@ async function measureHttpLatency(host, port, protocol, url) {
 
 const STRATEGIES = {
   global: {
-    // 全球节点：Google 和 Microsoft 必须都成功
-    validate: (g, m, h) => g > 0 && g <= 5000 && m > 0 && m <= 5000,
+    validate: (g, m, h) => g > 0 && g <= 5000,
     speedtestUrl: 'http://speed.cloudflare.com/__down?bytes=10000000'
   },
   cn: {
-    // 中国节点：Google 必须失败，且 Microsoft 和 Hicmatch (Huawei) 必须成功
     validate: (g, m, h) => g === -1 && m > 0 && m <= 5000 && h > 0 && h <= 5000,
     speedtestUrl: 'https://dldir1v6.qq.com/weixin/Universal/Windows/WeChatWin_4.1.7.exe'
   }
 };
 
-// ============= 单节点验证（不含测速） =============
+// ============= 单节点验证 =============
 
 async function validateProxy(proxyObj) {
   const { hash, ip, port, protocol, region = 'global' } = proxyObj;
-  let pLater = -1; // Ping latency
+  let pLater = -1;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     pLater = await pingHost(ip, port);
@@ -104,7 +98,6 @@ async function validateProxy(proxyObj) {
     return;
   }
 
-  // 核心逻辑：无论哪个区域，都先跑全量测试，measureHttpLatency 本身带有重试
   const [gRes, mRes, hRes] = await Promise.all([
     measureHttpLatency(ip, port, protocol, 'https://www.google.com/generate_204'),
     measureHttpLatency(ip, port, protocol, 'http://www.microsoft.com/pki/mscorp/cps'),
@@ -115,23 +108,13 @@ async function validateProxy(proxyObj) {
   const success = strategy.validate(gRes.latency, mRes.latency, hRes.latency);
 
   if (!success) {
-    handleFailedProxy(hash, `策略验证失败: 质量未达标 (G:${gRes.latency} M:${mRes.latency} H:${hRes.latency})`, region);
+    handleFailedProxy(hash, `质量未达标 (G:${gRes.latency} M:${mRes.latency} H:${hRes.latency})`, region);
     return;
   }
 
-  // 验证通过，记录数据
-  statements.updateProxyAsAvailable.run(
-      Date.now(), 
-      pLater, 
-      gRes.latency, 
-      mRes.latency, 
-      hRes.latency, 
-      hash, 
-      region
-  );
+  statements.updateProxyAsAvailable.run(Date.now(), pLater, gRes.latency, mRes.latency, hRes.latency, hash, region);
   logger.info(`[Validator] ✅ [${region.toUpperCase()}] ${ip}:${port} (P:${pLater} G:${gRes.latency} M:${mRes.latency} H:${hRes.latency})`);
 
-  // 将此节点推入测速队列
   speedtestQueue.push(proxyObj);
 }
 
@@ -143,17 +126,14 @@ async function speedtestProxy(proxyObj) {
   
   const bps = await testSpeed(ip, port, protocol, strategy.speedtestUrl);
   if (bps > 0) {
-    // The query requires 6 parameters: time, bps(set), bps(check 1), bps(check 2), hash, region
     statements.updateProxySpeed.run(Date.now(), bps, bps, bps, hash, region);
     if (bps >= highPerformanceMinBps) {
       logger.info(`[SpeedTest] 🚀 [${region.toUpperCase()}] 高性能! ${ip}:${port} ${(bps / 1024 / 1024).toFixed(2)} MB/s`);
-    } else if (status === 2 && bps < 1048576) {
-      logger.info(`[SpeedTest] 💔 [${region.toUpperCase()}] 退化: ${ip}:${port}`);
     }
   }
 }
 
-// ============= 失败处理 =============
+// ============= 辅助方法 =============
 
 function handleFailedProxy(hash, reason, region = 'global') {
   logger.debug(`[Validator] ✘ [${region.toUpperCase()}] ${hash} (${reason})`);
@@ -161,16 +141,13 @@ function handleFailedProxy(hash, reason, region = 'global') {
   statements.deleteProxy.run(hash, region);
 }
 
-// ============= 调度器：从 DB 批量拉取任务填充队列 =============
-
 function fillValidationQueue() {
   const nextDue = Date.now() - config.runtime.recheckIntervalMs;
-  const batchSize = validationConcurrency * 2; // 拉取 2 倍并发数的任务做缓冲
+  const batchSize = Math.max(validationConcurrency * 3, 50); 
   const rows = statements.getBatchPendingValidation.all(nextDue, batchSize);
 
   let added = 0;
   for (const row of rows) {
-    // 跳过已在处理中的节点
     if (processingSet.has(row.hash)) continue;
     processingSet.add(row.hash);
     validationQueue.push(row);
@@ -179,12 +156,15 @@ function fillValidationQueue() {
   return added;
 }
 
-// ============= Worker: 验证消费者 =============
-
-
+// ============= Workers =============
 
 async function validationWorker(workerId) {
   while (true) {
+    if (globalState.isPluginRunning) {
+      await delay(5000);
+      continue;
+    }
+
     const job = validationQueue.shift();
     if (job) {
       try {
@@ -196,16 +176,18 @@ async function validationWorker(workerId) {
       }
       if (delayBetweenTestsMs > 0) await delay(delayBetweenTestsMs);
     } else {
-      // 队列为空，等待调度器填充
-      await delay(500);
+      await delay(1000);
     }
   }
 }
 
-// ============= Worker: 测速消费者 =============
-
 async function speedtestWorker(workerId) {
   while (true) {
+    if (globalState.isPluginRunning) {
+      await delay(5000);
+      continue;
+    }
+
     const job = speedtestQueue.shift();
     if (job) {
       try {
@@ -215,47 +197,36 @@ async function speedtestWorker(workerId) {
       }
       if (delayBetweenSpeedtestsMs > 0) await delay(delayBetweenSpeedtestsMs);
     } else {
-      await delay(1000);
+      await delay(2000);
     }
   }
 }
-
-// ============= 调度器主循环 =============
 
 async function dispatcherLoop() {
+  logger.info(`[Dispatcher] 启动...`);
   while (true) {
-    // 当验证队列不饱满时，从 DB 补充
-    if (validationQueue.length < validationConcurrency) {
-      const added = fillValidationQueue();
-      if (added === 0) {
-        // DB 中没有待处理的了，等一会儿
-        await delay(3000);
+    try {
+      if (validationQueue.length < Math.floor(validationConcurrency / 2) + 1) {
+        const added = fillValidationQueue();
+        if (added === 0 && validationQueue.length === 0) {
+          await delay(10000);
+        } else {
+          await delay(2000);
+        }
+      } else {
+        await delay(1000);
       }
-    } else {
-      await delay(500);
+    } catch (err) {
+      logger.error(`[Dispatcher] 异常: ${err.message}`);
+      await delay(5000);
     }
   }
 }
 
-// ============= 引擎启动入口 =============
-
 export async function startValidatorEngine() {
-  logger.info(`[Engine] 启动验证引擎 (验证并发: ${validationConcurrency}, 测速并发: ${speedtestConcurrency})`);
-
-  const workers = [];
-
-  // 调度器（唯一的 DB 读取者）
-  workers.push(dispatcherLoop());
-
-  // 验证 worker 池
-  for (let i = 0; i < validationConcurrency; i++) {
-    workers.push(validationWorker(i));
-  }
-
-  // 测速 worker 池
-  for (let i = 0; i < speedtestConcurrency; i++) {
-    workers.push(speedtestWorker(i));
-  }
-
+  logger.info(`[Engine] 启动 (并发 V:${validationConcurrency} S:${speedtestConcurrency})`);
+  const workers = [dispatcherLoop()];
+  for (let i = 0; i < validationConcurrency; i++) workers.push(validationWorker(i));
+  for (let i = 0; i < speedtestConcurrency; i++) workers.push(speedtestWorker(i));
   await Promise.all(workers);
 }

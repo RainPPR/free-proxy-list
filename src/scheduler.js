@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import { config, logger } from './config.js';
+import { config, logger, globalState } from './config.js';
 import db, { statements } from './db.js';
 
 // 计算 protocol://ip:port 的 sha256 后 7 位
@@ -43,11 +43,20 @@ function runPlugin(pluginDef) {
         if (!pluginDef.enabled) return resolve();
 
         const { name, entry } = pluginDef;
-        const entryAbs = path.resolve(process.cwd(), entry);
+        let entryAbs = path.resolve(process.cwd(), entry);
 
-        logger.info(`[Scheduler] 🚀 触发插件执行 (单线程模式): ${name}`);
+        // 生产环境优化：如果运行的是打包后的文件，则重定向插件到对应的打包版本
+        const isBundle = process.argv[1].includes('bundle.cjs');
+        if (isBundle) {
+            const bundledEntry = path.join(process.cwd(), 'dist', entry.replace('.js', '.cjs'));
+            if (fs.existsSync(bundledEntry)) {
+                entryAbs = bundledEntry;
+            }
+        }
 
-        const MAX_LIFETIME = 1800000; // 30 分钟
+        logger.info(`[Scheduler] 🚀 触发插件执行 (${isBundle ? 'Standalone' : 'Source'}): ${name}`);
+
+        const MAX_LIFETIME = 600000; // 10 分钟
 
         const args = [entryAbs];
         if (pluginDef.args) args.push(...pluginDef.args);
@@ -69,35 +78,12 @@ function runPlugin(pluginDef) {
                 let nodes = JSON.parse(fileContent);
                 if (!Array.isArray(nodes)) throw new Error('Invalid JSON array');
 
-                const now = Date.now();
                 const region = pluginDef.region || 'global';
+                const now = Date.now();
 
-                const deduped = [];
-                let i = 0;
-
-                for (const node of nodes) {
-                    // 每 200 个节点让出一次事件循环，确保网络 I/O 能够被主程序处理
-                    if (++i % 200 === 0) await new Promise(r => setImmediate(r));
-
-                    if (!node || !node.protocol || !node.ip || !node.port) continue;
-                    const hash = computeHash(node.protocol, node.ip, node.port);
-
-                    if (statements.isDeleted.get(hash, region)) continue;
-                    if (statements.existsProxy.get(hash, region)) continue;
-
-                    deduped.push({
-                        hash,
-                        protocol: node.protocol,
-                        ip: node.ip,
-                        port: node.port,
-                        shortName: node.shortName || 'Unknown',
-                        longName: node.longName || 'Unknown',
-                        remark: node.remark || name,
-                        region: region
-                    });
-                }
-
-                sortNodes(deduped);
+                let currentBatch = [];
+                let processedCount = 0;
+                let addedCount = 0;
 
                 const insertTx = db.transaction((batch, timestamp) => {
                     let count = 0;
@@ -110,15 +96,43 @@ function runPlugin(pluginDef) {
                     return count;
                 });
 
-                let addedCount = 0;
-                // 事务分批更细化，每 200 个提交一次，降低对 DB 的长时间独占
-                for (let j = 0; j < deduped.length; j += 200) {
-                    const batch = deduped.slice(j, j + 200);
-                    addedCount += insertTx(batch, now);
-                    await new Promise(r => setImmediate(r));
+                for (const node of nodes) {
+                    if (!node || !node.protocol || !node.ip || !node.port) continue;
+                    
+                    // 仅保留必要字段进入待处理队列，节约内存
+                    const hash = computeHash(node.protocol, node.ip, node.port);
+                    if (statements.isDeleted.get(hash, region)) continue;
+                    if (statements.existsProxy.get(hash, region)) continue;
+
+                    currentBatch.push({
+                        hash,
+                        protocol: node.protocol,
+                        ip: node.ip,
+                        port: node.port,
+                        shortName: node.shortName || 'Unknown',
+                        longName: node.longName || 'Unknown',
+                        remark: node.remark || name,
+                        region: region
+                    });
+
+                    // 每 100 个节点让出一次事件循环，并分批提交数据库
+                    if (++processedCount % 100 === 0) {
+                        addedCount += insertTx(currentBatch, now);
+                        currentBatch = [];
+                        await new Promise(r => setImmediate(r));
+                    }
                 }
 
-                logger.info(`[Scheduler] ✅ ${name} 完成。写入: ${addedCount}`);
+                // 处理剩余不足 100 的节点
+                if (currentBatch.length > 0) {
+                    addedCount += insertTx(currentBatch, now);
+                }
+
+                logger.info(`[Scheduler] ✅ ${name} 完成。入库: ${addedCount}`);
+
+                // 显式释放大数据引用，加速 GC
+                nodes = null;
+                currentBatch = null;
 
                 try { fs.unlinkSync(outputPath); } catch (e) { /* ignore */ }
 
@@ -135,12 +149,12 @@ function processQueue() {
     if (activePluginsCount >= MAX_CONCURRENT_PLUGINS || pluginQueue.length === 0) return;
 
     const pluginDef = pluginQueue.shift();
-    activePluginsCount++;
-
+    globalState.isPluginRunning = true;
     runPlugin(pluginDef).finally(() => {
         activePluginsCount--;
-        // 插件任务之间增加 1 秒空隙，彻底让出系统资源
-        setTimeout(processQueue, 1000);
+        globalState.isPluginRunning = false;
+        // 插件任务之间增加 2 秒空隙，确保低内存（1024MB）环境下 V8 有时间进行 Full GC
+        setTimeout(processQueue, 2000);
     });
 }
 

@@ -141,7 +141,14 @@ free-proxy-list/
 | `high_performance_min_bps`    | 高性能阈值（Bytes/s）      | `10485760` (10MB/s) |
 | `recheck_interval`            | 存活节点复检间隔（ms）     | `14400000` (4h)     |
 | `purge_deleted_logs_interval` | 删除日志清理间隔（ms）     | `86400000` (24h)    |
-| `plugin_interval_seconds`     | 插件执行间隔（秒）         | `10800` (3h)        |
+| `plugin_interval_seconds`     | 插件执行间隔（秒）         | `8100` (2.25h)      |
+
+### 🚀 1024MB 极限优化建议
+
+针对 1024MB 内存环境，本项目已集成 `esbuild` 自动打包。
+
+- **打包指令**: `npm run build` (生成 `dist/bundle.cjs`)
+- **启动参数**: 建议开启 `--max-old-space-size=768` 及相关 GC 优化参数。
 
 ### 插件配置 (plugins)
 
@@ -375,7 +382,7 @@ A: 检查网络出口 IP 是否被目标网站封禁，或调整 `timeout_thresh
 A: 检查插件文件是否存在、权限是否正确、node 版本是否符合要求。
 
 **Q: 内存占用过高？**
-A: 降低 `validation_concurrency` 和 `speedtest_concurrency`，或增加 `delay_between_tests`。
+A: 降低 `validation_concurrency` 和 `speedtest_concurrency`。本项目已针对 1024MB 环境优化，建议在启动命令中显式加入 `--max-old-space-size=768` 以强制触发 V8 GC。
 
 ---
 

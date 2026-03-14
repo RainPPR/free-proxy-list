@@ -6,7 +6,12 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.4",
+    "esbuild-plugin-copy": "^2.1.1"
   },
   "dependencies": {
     "axios": "^1.13.6",

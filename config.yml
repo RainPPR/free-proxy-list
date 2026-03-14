@@ -29,7 +29,7 @@ external:
 # ==========================================
 runtime:
   # 并发验证线程数（最大 32，默认 8）
-  validation_concurrency: 32
+  validation_concurrency: 16
 
   # 相邻检查节点的额外强制等待时间，单位毫秒 (ms)
   # 设为 0 即不等待，全速运行
@@ -43,21 +43,21 @@ runtime:
   timeout_threshold: 5000
   
   # 允许每个节点验证流程发生重试的最大次数
-  max_retries: 5
+  max_retries: 3
   
-  # 高性能下载测试超时强制打断限额（单位 ms，默认 10s）
+  # 高性能下载测试超时强制打断限额 (ms)
   speedtest_timeout: 10000
   
   # 测速并发线程数（最大 8，默认 1）
-  speedtest_concurrency: 8
+  speedtest_concurrency: 4
   
-  # 高性能界定基础速率红线（单位 Bytes/s，这里为 10MB/s 转化值）
+  # 高性能界定基础速率红线 (10MB/s)
   high_performance_min_bps: 10485760
   
-  # 代理存活老龄节点重新复检周期间隔（单位毫秒，4h = 14400000ms）
-  recheck_interval: 14400000
+  # 代理存活老龄节点重新复检周期 (8h)
+  recheck_interval: 28800000
   
-  # 死链日志自动抛弃阈值（单位毫秒，24h = 86400000ms）
+  # 死链日志自动抛弃阈值 (24h)
   purge_deleted_logs_interval: 86400000
   
   # 插件执行间隔时间（单位秒，6h = 21600s）

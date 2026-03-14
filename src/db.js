@@ -11,8 +11,12 @@ if (!fs.existsSync(dbDir)) {
 
 const db = new Database(config.app.dbPath);
 
+// 强制限制 SQLite 的内存页面缓存（例如限制为 32MB）
+db.pragma('cache_size = 8000'); 
 // WAL 模式支持并发读写
 db.pragma('journal_mode = WAL');
+// 性能优化：在保证基本安全的前提下，大幅减少磁盘等待
+db.pragma('synchronous = NORMAL');
 // 降低 busy 超时（减少并发锁冲突）
 db.pragma('busy_timeout = 5000');
 
@@ -139,36 +143,42 @@ export const statements = {
       (SELECT COUNT(*) FROM deleted_logs WHERE region = ?) as deletedLogsCount
   `),
 
-  // 获取可用+高性能列表
+  // 获取可用+高性能列表 (用于全量订阅)
   getAvailableNodesForSub: db.prepare(`
     SELECT * FROM proxies 
     WHERE status IN (1, 2) AND region = ?
     ORDER BY 
+      -- 1. 状态：高性能在前
       status DESC,
       
-      -- 第一优先级：协议权重 (socks5/socks4 > https > http)
+      -- 2. 协议优先级：Socks5 > Socks4 > Https > Http
       CASE 
-        WHEN protocol IN ('socks5', 'socks4') THEN 3
+        WHEN protocol = 'socks5' THEN 4
+        WHEN protocol = 'socks4' THEN 3
         WHEN protocol = 'https' THEN 2
         WHEN protocol = 'http' THEN 1
         ELSE 0
       END DESC,
       
-      -- 第二优先级：目标国家优先
+      -- 3. 目标国家优先级
       CASE 
         WHEN substr(short_name, 1, instr(short_name, '_') - 1) IN ('HK', 'TW', 'SG', 'JP', 'GB', 'US', 'DE', 'KR') THEN 1
         ELSE 0
       END DESC,
-      
-      -- 第三优先级：有详细信息优先（short_name 包含 _ 表示有城市信息）
+
+      -- 4. 城市详细信息
       CASE 
         WHEN short_name IS NOT NULL AND short_name != 'Unknown' AND instr(short_name, '_') > 0 THEN 1
         ELSE 0
-      END DESC
+      END DESC,
+
+      -- 5. 质量参考：延迟升序
+      google_latency ASC,
+      ping_latency ASC
     LIMIT ? OFFSET ?
   `),
 
-  // 获取高性能列表（专门的高性能订阅）
+  // 获取高性能列表 (用于特供订阅)
   getHighPerformanceNodes: db.prepare(`
     SELECT * FROM proxies 
     WHERE status = 2 AND region = ?

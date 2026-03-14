@@ -83,3 +83,7 @@ export const logger = {
   warn(...msg) { this.log('warn', ...msg); },
   error(...msg) { this.log('error', ...msg); }
 };
+
+export const globalState = {
+  isPluginRunning: false
+};
