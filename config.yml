@@ -29,7 +29,7 @@ external:
 # ==========================================
 runtime:
   # 并发验证线程数（最大 32，默认 8）
-  validation_concurrency: 16
+  validation_concurrency: 32
 
   # 相邻检查节点的额外强制等待时间，单位毫秒 (ms)
   # 设为 0 即不等待，全速运行
@@ -49,19 +49,19 @@ runtime:
   speedtest_timeout: 10000
   
   # 测速并发线程数（最大 8，默认 1）
-  speedtest_concurrency: 4
+  speedtest_concurrency: 8
   
-  # 高性能界定基础速率红线 (10MB/s)
-  high_performance_min_bps: 10485760
+  # 高性能界定基础速率红线 (5MB/s)
+  high_performance_min_bps: 5242880
   
-  # 代理存活老龄节点重新复检周期 (8h)
-  recheck_interval: 28800000
+  # 代理存活老龄节点重新复检周期 (4h)
+  recheck_interval: 14400000
   
   # 死链日志自动抛弃阈值 (24h)
   purge_deleted_logs_interval: 86400000
   
-  # 插件执行间隔时间（单位秒，6h = 21600s）
-  plugin_interval_seconds: 21600
+  # 插件执行间隔时间（4h）
+  plugin_interval_seconds: 14400
 
 # ==========================================
 # 提取器与插件机制规划 (Plugin Schedulers)
@@ -95,7 +95,7 @@ plugins:
     region: "global"
 
   - name: "gfpcom"
-    enabled: true
+    enabled: false
     entry: "plugins/gfpcom/index.js"
     region: "global"
 
