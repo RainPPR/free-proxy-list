@@ -1,0 +1,52 @@
+import axios from 'axios';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import fs from 'node:fs';
+
+/**
+ * redscrape-cn 插件
+ * 目标：筛选国家代码为 CN 的节点
+ */
+
+async function run() {
+  const url = 'https://free.redscrape.com/api/proxies?format=json';
+  
+  try {
+    const res = await axios.get(url, { responseType: 'json', timeout: 20000 });
+    const data = res.data;
+    const out = [];
+
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (!item.address || !item.port || !item.protocol) continue;
+        if (item.country_code !== 'CN') continue;
+
+        const countryCode = 'CN';
+        const countryName = 'China';
+        const city = item.city ? item.city.replace(/\s+/g, '') : '';
+
+        const shortName = city ? `${countryCode}_${city}` : countryCode;
+        const longName = city ? `${countryName}_${city}` : countryName;
+
+        out.push({
+          protocol: item.protocol.toLowerCase(),
+          ip: item.address,
+          port: parseInt(item.port, 10),
+          shortName: shortName,
+          longName: longName,
+          remark: 'redscrape-cn'
+        });
+      }
+    }
+
+    const outputPath = join(tmpdir(), `redscrape-cn-${Date.now()}.json`);
+    fs.writeFileSync(outputPath, JSON.stringify(out), 'utf-8');
+    
+    console.log(outputPath);
+    process.exit(0);
+  } catch (err) {
+    process.exit(1);
+  }
+}
+
+run();

@@ -69,37 +69,178 @@ runtime:
 plugins:
   # 注意：插件会按照配置顺序依次执行，每次执行间隔由 plugin_interval_seconds 控制
   
-  - name: "freeproxylist"
+  - name: "proxifly"
     enabled: true
-    entry: "plugins/freeproxylist/main.js"
+    entry: "plugins/proxifly/main.js"
     region: "global"
-    
+
+  - name: "proxifly-cn"
+    enabled: true
+    entry: "plugins/proxifly/cn.js"
+    region: "cn"
+
   - name: "proxyscrape"
     enabled: true
     entry: "plugins/proxyscrape/index.js"
     region: "global"
 
-  - name: "freeproxylist-cn"
-    enabled: true
-    entry: "plugins/freeproxylist-cn/main.js"
-    region: "cn"
-
   - name: "proxyscrape-cn"
     enabled: true
-    entry: "plugins/proxyscrape-cn/index.js"
+    entry: "plugins/proxyscrape/cn.js"
     region: "cn"
     
-  - name: "freeproxy"
-    entry: "plugins/freeproxy/main.js"
+  - name: "freeproxylist"
+    entry: "plugins/freeproxylist/main.js"
     enabled: true
     region: "global"
 
-  - name: "freeproxyworld-cn"
+  - name: "gfpcom"
     enabled: true
-    entry: "plugins/freeproxyworld/cn.js"
+    entry: "plugins/gfpcom/index.js"
+    region: "global"
+
+  - name: "thespeedx"
+    enabled: true
+    entry: "plugins/thespeedx/index.js"
+    region: "global"
+
+  - name: "zaeem20"
+    enabled: true
+    entry: "plugins/zaeem20/index.js"
+    region: "global"
+
+  - name: "monosans"
+    enabled: true
+    entry: "plugins/monosans/index.js"
+    region: "global"
+
+  - name: "monosans-cn"
+    enabled: true
+    entry: "plugins/monosans/cn.js"
     region: "cn"
 
-  - name: "freeproxyworld"
+  - name: "spys"
     enabled: true
-    entry: "plugins/freeproxyworld/global.js"
+    entry: "plugins/spys/index.js"
     region: "global"
+
+  - name: "vakhov"
+    enabled: true
+    entry: "plugins/vakhov/index.js"
+    region: "global"
+
+  - name: "vakhov-cn"
+    enabled: true
+    entry: "plugins/vakhov/cn.js"
+    region: "cn"
+
+  - name: "geonode"
+    enabled: true
+    entry: "plugins/geonode/index.js"
+    region: "global"
+
+  - name: "geonode-cn"
+    enabled: true
+    entry: "plugins/geonode/cn.js"
+    region: "cn"
+
+  - name: "iplocate"
+    enabled: true
+    entry: "plugins/iplocate/index.js"
+    region: "global"
+
+  - name: "iproyal"
+    enabled: true
+    entry: "plugins/iproyal/index.js"
+    region: "global"
+
+  - name: "iproyal-cn"
+    enabled: true
+    entry: "plugins/iproyal/cn.js"
+    region: "cn"
+
+  - name: "redscrape"
+    enabled: true
+    entry: "plugins/redscrape/index.js"
+    region: "global"
+
+  - name: "redscrape-cn"
+    enabled: true
+    entry: "plugins/redscrape/cn.js"
+    region: "cn"
+
+  - name: "sockslist-us"
+    enabled: true
+    entry: "plugins/sockslistus/index.js"
+    region: "global"
+
+  - name: "sockslist-us-cn"
+    enabled: true
+    entry: "plugins/sockslistus/cn.js"
+    region: "cn"
+
+  - name: "proxyspace"
+    enabled: true
+    entry: "plugins/proxyspace/index.js"
+    region: "global"
+
+  - name: "openproxylist"
+    enabled: true
+    entry: "plugins/openproxylist/index.js"
+    region: "global"
+
+  - name: "lonekingcode"
+    enabled: true
+    entry: "plugins/lonekingcode/index.js"
+    region: "global"
+
+  - name: "lonekingcode-cn"
+    enabled: true
+    entry: "plugins/lonekingcode/cn.js"
+    region: "cn"
+
+  - name: "r00tee"
+    enabled: true
+    entry: "plugins/r00tee/index.js"
+    region: "global"
+
+  - name: "mmpx12"
+    enabled: true
+    entry: "plugins/mmpx12/index.js"
+    region: "global"
+
+  - name: "jetkai"
+    enabled: true
+    entry: "plugins/jetkai/index.js"
+    region: "global"
+
+  - name: "jetkai-cn"
+    enabled: true
+    entry: "plugins/jetkai/cn.js"
+    region: "cn"
+
+  - name: "clarketm"
+    enabled: true
+    entry: "plugins/clarketm/index.js"
+    region: "global"
+
+  - name: "roosterkid"
+    enabled: true
+    entry: "plugins/roosterkid/index.js"
+    region: "global"
+
+  - name: "roosterkid-cn"
+    enabled: true
+    entry: "plugins/roosterkid/cn.js"
+    region: "cn"
+
+  - name: "freeproxydb"
+    enabled: true
+    entry: "plugins/freeproxydb/index.js"
+    region: "global"
+
+  - name: "freeproxydb-cn"
+    enabled: true
+    entry: "plugins/freeproxydb/cn.js"
+    region: "cn"
+
