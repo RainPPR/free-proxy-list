@@ -11,7 +11,7 @@ export default async function fetch() {
   try {
     const res = await axios.get(url, { responseType: 'json', timeout: 30000 });
     const data = res.data;
-    const out = [];
+    const proxies = [];
 
     if (Array.isArray(data)) {
       for (const item of data) {
@@ -28,7 +28,7 @@ export default async function fetch() {
         const shortName = city ? `${countryCode}_${city}` : countryCode;
         const longName = city ? `${countryName}_${city}` : countryName;
 
-        out.push({
+        proxies.push({
           protocol: item.protocol.toLowerCase(),
           ip: item.host,
           port: parseInt(item.port, 10),
@@ -39,7 +39,7 @@ export default async function fetch() {
       }
     }
 
-    return out;
+    return proxies;
   } catch (err) {
     return [];
   }

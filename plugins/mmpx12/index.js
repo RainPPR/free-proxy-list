@@ -11,7 +11,7 @@ export default async function fetch() {
   try {
     const res = await axios.get(url, { responseType: 'text', timeout: 20000 });
     const lines = res.data.split('\n');
-    const out = [];
+    const proxies = [];
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -24,7 +24,7 @@ export default async function fetch() {
         const port = parseInt(urlObj.port, 10);
 
         if (ip && port > 0 && port <= 65535) {
-          out.push({
+          proxies.push({
             protocol,
             ip,
             port,
@@ -38,7 +38,7 @@ export default async function fetch() {
         const parts = trimmed.split(/:\/\/|:/);
         if (parts.length >= 3) {
            // protocol://ip:port -> [protocol, ip, port]
-           out.push({
+           proxies.push({
              protocol: parts[0].toLowerCase(),
              ip: parts[1],
              port: parseInt(parts[2], 10),
@@ -50,7 +50,7 @@ export default async function fetch() {
       }
     }
 
-    return out;
+    return proxies;
   } catch (err) {
     return [];
   }

@@ -41,7 +41,7 @@ export const plugins = {
     freeproxydb: freeproxydb_global,
     freeproxylist: freeproxylist_main,
     geonode: geonode_global,
-    gfpcom,
+    // gfpcom,
     iplocate,
     iproyal: iproyal_global,
     jetkai: jetkai_global,

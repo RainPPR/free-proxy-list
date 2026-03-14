@@ -11,7 +11,7 @@ export default async function fetch() {
   try {
     const res = await axios.get(url, { responseType: 'json', timeout: 30000 });
     const data = res.data;
-    const out = [];
+    const proxies = [];
 
     if (Array.isArray(data)) {
       for (const item of data) {
@@ -29,7 +29,7 @@ export default async function fetch() {
         for (const proto of item.protocols) {
           if (!proto.type || !proto.port) continue;
 
-          out.push({
+          proxies.push({
             protocol: proto.type.toLowerCase(),
             ip: item.ip,
             port: parseInt(proto.port, 10),
@@ -41,7 +41,7 @@ export default async function fetch() {
       }
     }
 
-    return out;
+    return proxies;
   } catch (err) {
     return [];
   }

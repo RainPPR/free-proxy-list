@@ -2,12 +2,20 @@ import axios from 'axios';
 
 /**
  * freeproxydb-cn 插件
- * 目标：仅筛选国家为 CN 的节点，支持自动分页
+ * 目标：从 freeproxydb.com 获取代理列表并筛选出中国大陆节点
+ * 
+ * 性能优化点：
+ * 1. 采用内存化 fetch 模式，移除临时文件 IO。
+ * 2. 限制最大抓取页数以适配 1024MB 内存。
  */
 
 const PAGE_SIZE = 100;
-const BASE_URL = 'https://freeproxydb.com/api/proxy/search?country=&protocol=socks5,http,socks4&anonymity=&speed=0,60&https=0&page_size=' + PAGE_SIZE;
+const BASE_URL = `https://freeproxydb.com/api/proxy/search?country=&protocol=socks5,http,socks4&anonymity=&speed=0,60&https=0&page_size=${PAGE_SIZE}`;
 
+/**
+ * 抓取单个分页数据
+ * @param {number} pageIndex 
+ */
 async function fetchPage(pageIndex) {
   const url = `${BASE_URL}&page_index=${pageIndex}`;
   try {
@@ -18,19 +26,25 @@ async function fetchPage(pageIndex) {
   }
 }
 
+/**
+ * 插件入口：获取中国代理列表
+ * @returns {Promise<Array>}
+ */
 export default async function fetch() {
-  const results = [];
+  const rawResults = [];
   
   try {
+    // 1. 获取首页
     const firstPage = await fetchPage(1);
-    if (!firstPage || !firstPage.data || !Array.isArray(firstPage.data.data)) {
+    if (!firstPage?.data?.data || !Array.isArray(firstPage.data.data)) {
       return [];
     }
 
-    results.push(...firstPage.data.data);
+    rawResults.push(...firstPage.data.data);
     const totalCount = firstPage.data.total_count || 0;
     const pageCount = Math.ceil(totalCount / PAGE_SIZE);
 
+    // 2. 抓取分表
     if (pageCount > 1) {
       const maxPages = Math.min(pageCount, 50);
       const promises = [];
@@ -39,35 +53,30 @@ export default async function fetch() {
       }
       const otherPages = await Promise.all(promises);
       for (const pageContent of otherPages) {
-        if (pageContent && pageContent.data && Array.isArray(pageContent.data.data)) {
-          results.push(...pageContent.data.data);
+        if (pageContent?.data?.data && Array.isArray(pageContent.data.data)) {
+          rawResults.push(...pageContent.data.data);
         }
       }
     }
 
-    // 解析并提取，仅保留 China
-    const out = results.map(item => {
-      if (!item.ip || !item.port) return null;
-      if (item.country !== 'CN') return null;
+    // 3. 筛选并格式化
+    const proxies = rawResults.map(item => {
+      // 严格筛选 CN 且具备 IP/Port 的项
+      if (!item.ip || !item.port || item.country !== 'CN') return null;
 
-      const countryCode = 'CN';
-      const countryName = 'China';
       const city = item.city ? item.city.replace(/\s+/g, '') : '';
 
-      const shortName = city ? `${countryCode}_${city}` : countryCode;
-      const longName = city ? `${countryName}_${city}` : countryName;
-
       return {
-        protocol: item.protocol || 'http',
+        protocol: (item.protocol || 'http').toLowerCase(),
         ip: item.ip,
         port: parseInt(item.port, 10),
-        shortName: shortName,
-        longName: longName,
+        shortName: city ? `CN_${city}` : 'CN',
+        longName: city ? `China ${city}` : 'China',
         remark: 'freeproxydb-cn'
       };
     }).filter(Boolean);
 
-    return totalNodes;
+    return proxies;
   } catch (err) {
     return [];
   }

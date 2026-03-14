@@ -11,7 +11,7 @@ async function fetchFromEndpoint(protocol, url) {
   try {
     const res = await axios.get(url, { responseType: 'text', timeout: 15000 });
     const lines = res.data.split('\n');
-    const out = [];
+    const proxies = [];
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -21,7 +21,7 @@ async function fetchFromEndpoint(protocol, url) {
       if (parts.length === 2) {
         let p = parseInt(parts[1], 10);
         if (p > 0 && p <= 65535) {
-          out.push({
+          proxies.push({
             protocol,
             ip: parts[0],
             port: p,
@@ -32,7 +32,7 @@ async function fetchFromEndpoint(protocol, url) {
         }
       }
     }
-    return out;
+    return proxies;
   } catch (err) {
     return [];
   }
@@ -55,4 +55,4 @@ export default async function fetch() {
   }
 
   return totalNodes;
-}
+}

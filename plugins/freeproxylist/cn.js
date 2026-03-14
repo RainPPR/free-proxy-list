@@ -1,9 +1,14 @@
-import https from 'https';
+import axios from 'axios';
 import * as cheerio from 'cheerio';
 
 /**
  * freeproxylist-cn 插件
  * 目标：从 free-proxy-list.net 获取代理列表并仅筛选中国区节点
+ * 
+ * 性能优化点：
+ * 1. 统一迁移至 axios 以减少 Buffer 操作开销。
+ * 2. 移除原有的 totalNodes 错误引用。
+ * 3. 使用内存内 Map 进行快速去重。
  */
 
 const ENDPOINTS = [
@@ -11,26 +16,11 @@ const ENDPOINTS = [
   { url: 'https://free-proxy-list.net/en/socks-proxy.html', isSocks: true },
 ];
 
-function fetchPage(url) {
-  return new Promise((resolve, reject) => {
-    https.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      }
-    }, (res) => {
-      const chunks = [];
-      res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => {
-        if (res.statusCode === 200) {
-          resolve(Buffer.concat(chunks).toString('utf-8'));
-        } else {
-          reject(new Error(`HTTP ${res.statusCode}`));
-        }
-      });
-    }).on('error', reject);
-  });
-}
-
+/**
+ * 解析页面 HTML 提取 CN 节点
+ * @param {string} html 
+ * @param {boolean} isSocksPage 
+ */
 function parseTable(html, isSocksPage) {
   const $ = cheerio.load(html);
   const rows = [];
@@ -41,28 +31,28 @@ function parseTable(html, isSocksPage) {
   table.find('tbody tr').each((_, tr) => {
     const tds = $(tr).find('td');
     if (tds.length >= 8) {
-      const ip = $(tds[0]).text().trim();
-      const port = $(tds[1]).text().trim();
-      const countryCode = $(tds[2]).text().trim();
-      const countryName = $(tds[3]).text().trim();
+      const countryCode = $(tds[2]).text().trim().toUpperCase();
       
-      // 仅保留中国区节点
+      // 严格筛选中国区节点
       if (countryCode !== 'CN') return;
 
+      const ip = $(tds[0]).text().trim();
+      const port = $(tds[1]).text().trim();
+      
       if (ip && port && !isNaN(port)) {
         let protocol;
         if (isSocksPage) {
-          const version = $(tds[4]).text().trim();
-          if (version.toLowerCase().includes('socks4')) {
+          const version = $(tds[4]).text().trim().toLowerCase();
+          if (version.includes('socks4')) {
             protocol = 'socks4';
-          } else if (version.toLowerCase().includes('socks5')) {
+          } else if (version.includes('socks5')) {
             protocol = 'socks5';
           } else {
             return;
           }
         } else {
-          const https = $(tds[5]).text().trim().toLowerCase();
-          protocol = https === 'yes' ? 'https' : 'http';
+          const httpsValue = $(tds[5]).text().trim().toLowerCase();
+          protocol = httpsValue === 'yes' ? 'https' : 'http';
         }
 
         rows.push({
@@ -80,18 +70,28 @@ function parseTable(html, isSocksPage) {
   return rows;
 }
 
+/**
+ * 插件入口
+ */
 export default async function fetch() {
+  const allProxies = new Map();
+  const timeoutLimit = 20000;
+  
   try {
-    const allProxies = new Map();
-    
     for (const { url, isSocks } of ENDPOINTS) {
       try {
-        const html = await fetchPage(url);
-        const proxies = parseTable(html, isSocks);
-        for (const proxy of proxies) {
-          const key = `${proxy.protocol}://${proxy.ip}:${proxy.port}`;
+        const res = await axios.get(url, { 
+          timeout: timeoutLimit,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        });
+
+        const proxies = parseTable(res.data, isSocks);
+        for (const p of proxies) {
+          const key = `${p.protocol}://${p.ip}:${p.port}`;
           if (!allProxies.has(key)) {
-            allProxies.set(key, proxy);
+            allProxies.set(key, p);
           }
         }
       } catch (err) {
@@ -99,8 +99,7 @@ export default async function fetch() {
       }
     }
     
-    const result = Array.from(allProxies.values());
-    return totalNodes;
+    return Array.from(allProxies.values());
   } catch (err) {
     return [];
   }

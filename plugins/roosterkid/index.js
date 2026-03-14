@@ -13,7 +13,7 @@ async function fetchFromEndpoint(url) {
     const protocol = basename(url).replace('.txt', '').toLowerCase();
     const res = await axios.get(url, { responseType: 'text', timeout: 20000 });
     const lines = res.data.split('\n');
-    const out = [];
+    const proxies = [];
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -39,7 +39,7 @@ async function fetchFromEndpoint(url) {
 
       if (ipPort) {
         const [ip, port] = ipPort.split(':');
-        out.push({
+        proxies.push({
           protocol,
           ip,
           port: parseInt(port, 10),
@@ -49,7 +49,7 @@ async function fetchFromEndpoint(url) {
         });
       }
     }
-    return out;
+    return proxies;
   } catch (err) {
     return [];
   }
@@ -73,4 +73,3 @@ export default async function fetch() {
 
   return totalNodes;
 }
-

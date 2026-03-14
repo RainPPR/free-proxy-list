@@ -12,13 +12,13 @@ export default async function fetch() {
     const data = res.data;
     
     // V4 JSON 格式通常包含一个 proxies 数组
-    const proxies = data.proxies || [];
-    const out = [];
+    const rawNodes = data.proxies || [];
+    const proxies = [];
 
-    for (const p of proxies) {
+    for (const p of rawNodes) {
       if (!p.ip || !p.port || !p.protocol) continue;
       
-      out.push({
+      proxies.push({
         protocol: p.protocol.toLowerCase(),
         ip: p.ip,
         port: parseInt(p.port, 10),
@@ -28,7 +28,7 @@ export default async function fetch() {
       });
     }
 
-    return out;
+    return proxies;
   } catch (err) {
     return [];
   }
