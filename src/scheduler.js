@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -11,37 +11,33 @@ export function computeHash(protocol, ip, port) {
     return crypto.createHash('sha256').update(raw).digest('hex').slice(-7);
 }
 
-// 三级优先级排序： socks优先 > 目标国家优先 > 有详细信息优先
+// 节点优先级排序
 function sortNodes(nodes) {
-  const TARGET_COUNTRIES = ['HK', 'TW', 'SG', 'JP', 'GB', 'US', 'DE', 'KR'];
-  
-  return nodes.sort((a, b) => {
-    // 第一优先级：SOCKS5/SOCKS4 优先
-    const aIsSocks = a.protocol === 'socks5' || a.protocol === 'socks4';
-    const bIsSocks = b.protocol === 'socks5' || b.protocol === 'socks4';
-    if (aIsSocks !== bIsSocks) return aIsSocks ? 1 : -1;
-    
-    // 第二优先级：目标国家优先
-    const aCountry = a.shortName?.split('_')[0] || 'Unknown';
-    const bCountry = b.shortName?.split('_')[0] || 'Unknown';
-    const aInTarget = TARGET_COUNTRIES.includes(aCountry);
-    const bInTarget = TARGET_COUNTRIES.includes(bCountry);
-    if (aInTarget !== bInTarget) return aInTarget ? 1 : -1;
-    
-    // 第三优先级：有详细信息优先（shortName 包含 _ 表示有城市信息）
-    const aHasDetail = a.shortName && a.shortName !== 'Unknown' && a.shortName.includes('_');
-    const bHasDetail = b.shortName && b.shortName !== 'Unknown' && b.shortName.includes('_');
-    if (aHasDetail !== bHasDetail) return aHasDetail ? 1 : -1;
-    
-    return 0;
-  });
+    const TARGET_COUNTRIES = ['HK', 'TW', 'SG', 'JP', 'GB', 'US', 'DE', 'KR'];
+    return nodes.sort((a, b) => {
+        const aIsSocks = a.protocol === 'socks5' || a.protocol === 'socks4';
+        const bIsSocks = b.protocol === 'socks5' || b.protocol === 'socks4';
+        if (aIsSocks !== bIsSocks) return aIsSocks ? 1 : -1;
+        
+        const aCountry = a.shortName?.split('_')[0] || 'Unknown';
+        const bCountry = b.shortName?.split('_')[0] || 'Unknown';
+        const aInTarget = TARGET_COUNTRIES.includes(aCountry);
+        const bInTarget = TARGET_COUNTRIES.includes(bCountry);
+        if (aInTarget !== bInTarget) return aInTarget ? 1 : -1;
+        
+        const aHasDetail = a.shortName && a.shortName !== 'Unknown' && a.shortName.includes('_');
+        const bHasDetail = b.shortName && b.shortName !== 'Unknown' && b.shortName.includes('_');
+        if (aHasDetail !== bHasDetail) return aHasDetail ? 1 : -1;
+        
+        return 0;
+    });
 }
 
 const pluginQueue = [];
 let activePluginsCount = 0;
-const MAX_CONCURRENT_PLUGINS = 4;
+// 严格单线程运行插件，降低系统负载，确保前端响应、测速和延迟服务不受影响
+const MAX_CONCURRENT_PLUGINS = 1;
 
-// 执行单一插件的包装器
 function runPlugin(pluginDef) {
     return new Promise((resolve) => {
         if (!pluginDef.enabled) return resolve();
@@ -49,63 +45,45 @@ function runPlugin(pluginDef) {
         const { name, entry } = pluginDef;
         const entryAbs = path.resolve(process.cwd(), entry);
 
-        logger.info(`[Scheduler] 🚀 触发插件执行: ${name} (node ${entryAbs})`);
+        logger.info(`[Scheduler] 🚀 触发插件执行 (单线程模式): ${name}`);
 
-        const MAX_LIFETIME = 1800000; // 最大运行时间延长至 30 分钟
+        const MAX_LIFETIME = 1800000; // 30 分钟
 
-        // 统一使用 node 执行
         const args = [entryAbs];
-        if (pluginDef.args) {
-            args.push(...pluginDef.args);
-        }
+        if (pluginDef.args) args.push(...pluginDef.args);
 
-        execFile('node', args, { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
+        execFile('node', args, { timeout: MAX_LIFETIME }, async (error, stdout) => {
             try {
                 if (error) {
-                    if (error.killed) {
-                        logger.error(`[Scheduler] ❌ 插件 ${name} 运行超时(${MAX_LIFETIME}ms)，已被强杀。`);
-                    } else {
-                        logger.error(`[Scheduler] ❌ 插件 ${name} 运行错误:`, error.message);
-                    }
+                    logger.error(`[Scheduler] ❌ 插件 ${name} 运行错误:`, error.killed ? 'Timeout' : error.message);
                     return resolve();
                 }
 
-                // 插件的 stdout 应该是临时文件路径
                 const outputPath = stdout.trim();
                 if (!outputPath || !fs.existsSync(outputPath)) {
-                    logger.error(`[Scheduler] ❌ 插件 ${name} 未返回有效临时文件路径: ${outputPath}`);
+                    logger.error(`[Scheduler] ❌ 插件 ${name} 未返回有效路径`);
                     return resolve();
                 }
 
-                // 读取临时文件内容
                 const fileContent = fs.readFileSync(outputPath, 'utf-8');
                 let nodes = JSON.parse(fileContent);
-                if (!Array.isArray(nodes)) throw new Error('输出不是顶层 JSON 数组');
+                if (!Array.isArray(nodes)) throw new Error('Invalid JSON array');
 
                 const now = Date.now();
                 const region = pluginDef.region || 'global';
 
-                logger.info(`[Scheduler] 📦 ${name} 成功获取 ${nodes.length} 个节点，开始切片预处理(防止阻塞事件循环)...`);
-
-                // 内存去重与查库去重阶段
-                const seenHashes = new Set();
                 const deduped = [];
                 let i = 0;
 
                 for (const node of nodes) {
+                    // 每 200 个节点让出一次事件循环，确保网络 I/O 能够被主程序处理
                     if (++i % 200 === 0) await new Promise(r => setImmediate(r));
 
                     if (!node || !node.protocol || !node.ip || !node.port) continue;
                     const hash = computeHash(node.protocol, node.ip, node.port);
 
-                    if (seenHashes.has(hash)) continue;
-                    seenHashes.add(hash);
-
-                    const deletedCheck = statements.isDeleted.get(hash, region);
-                    if (deletedCheck) continue;
-
-                    const existing = statements.existsProxy.get(hash, region);
-                    if (existing) continue;
+                    if (statements.isDeleted.get(hash, region)) continue;
+                    if (statements.existsProxy.get(hash, region)) continue;
 
                     deduped.push({
                         hash,
@@ -121,38 +99,31 @@ function runPlugin(pluginDef) {
 
                 sortNodes(deduped);
 
-                // 数据库批量写入
                 const insertTx = db.transaction((batch, timestamp) => {
                     let count = 0;
                     for (const node of batch) {
                         try {
                             statements.insertOrUpdateReadyProxy.run({ ...node, now: timestamp });
                             count++;
-                        } catch (err) {
-                            logger.debug(`[Scheduler] 插入冲突/异常跳过: ${node.hash}`);
-                        }
+                        } catch (err) { /* ignore */ }
                     }
                     return count;
                 });
 
                 let addedCount = 0;
-                for (let j = 0; j < deduped.length; j += 500) {
-                    const batch = deduped.slice(j, j + 500);
+                // 事务分批更细化，每 200 个提交一次，降低对 DB 的长时间独占
+                for (let j = 0; j < deduped.length; j += 200) {
+                    const batch = deduped.slice(j, j + 200);
                     addedCount += insertTx(batch, now);
                     await new Promise(r => setImmediate(r));
                 }
 
-                logger.info(`[Scheduler] ✅ ${name} 导入完毕。有效写入: ${addedCount}`);
+                logger.info(`[Scheduler] ✅ ${name} 完成。写入: ${addedCount}`);
 
-                // 清理临时文件
-                try {
-                    fs.unlinkSync(outputPath);
-                } catch (e) {
-                    // 忽略删除失败
-                }
+                try { fs.unlinkSync(outputPath); } catch (e) { /* ignore */ }
 
-            } catch (parseErr) {
-                logger.error(`[Scheduler] ❌ 插件 ${name} 的输出解析失败:`, parseErr.message);
+            } catch (err) {
+                logger.error(`[Scheduler] ❌ ${name} 数据处理失败:`, err.message);
             } finally {
                 resolve();
             }
@@ -168,7 +139,8 @@ function processQueue() {
 
     runPlugin(pluginDef).finally(() => {
         activePluginsCount--;
-        processQueue(); // 递归调用处理下一个
+        // 插件任务之间增加 1 秒空隙，彻底让出系统资源
+        setTimeout(processQueue, 1000);
     });
 }
 
@@ -180,22 +152,16 @@ function queuePlugin(pluginDef) {
 let pluginInterval = null;
 
 export function initScheduler() {
-    logger.info(`[Scheduler] 初始化调度器，插件执行间隔: ${config.pluginIntervalSeconds}秒`);
+    logger.info(`[Scheduler] 初始化调度器 (单线程资源优化版)`);
 
-    // 立即执行一次所有启用的插件
     config.plugins.forEach(p => {
-        if (p.enabled) {
-            queuePlugin(p);
-        }
+        if (p.enabled) queuePlugin(p);
     });
 
-    // 设置间隔执行
     pluginInterval = setInterval(() => {
-        logger.info(`[Scheduler] 开始定时插件执行...`);
+        logger.info(`[Scheduler] 开始新一轮定时任务...`);
         config.plugins.forEach(p => {
-            if (p.enabled) {
-                queuePlugin(p);
-            }
+            if (p.enabled) queuePlugin(p);
         });
     }, config.pluginIntervalSeconds * 1000);
 }

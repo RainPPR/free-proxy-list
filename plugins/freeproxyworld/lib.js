@@ -3,52 +3,94 @@ import fs from 'node:fs';
 import * as cheerio from 'cheerio';
 
 /**
- * 使用 Playwright 执行极致内存优化的抓取
+ * 局部浏览器池管理器，用于解决内存泄漏
+ * 每 20 个页面强制冷重启
  */
-export async function fetchProxies({ protocol = '', country = '', speed = '', page = 1 }) {
-    const url = `https://www.freeproxy.world/?type=${protocol}&country=${country}&speed=${speed}&page=${page}`;
-    
-    let browser = null;
-    try {
-        // 启动极致简化的浏览器实例
-        browser = await chromium.launch({
-            headless: true,
-            args: [
-                '--disable-setuid-sandbox',
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process'
-            ]
-        });
+class BrowserManager {
+    constructor() {
+        this.browser = null;
+        this.pageCount = 0;
+        this.MAX_PAGES_BEFORE_RESTART = 20;
+    }
 
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-        });
+    async getPage() {
+        // 如果页面数超限或浏览器没启动，执行冷启动
+        if (!this.browser || this.pageCount >= this.MAX_PAGES_BEFORE_RESTART) {
+            await this.close();
+            console.log(`[Playwright] 启动浏览器引擎 (已抓取 ${this.pageCount} 页)`);
+            this.browser = await chromium.launch({
+                headless: true,
+                args: [
+                    '--disable-setuid-sandbox',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--disable-gpu',
+                    '--no-first-run'
+                ]
+            });
+            this.pageCount = 0;
+        }
 
+        const context = await this.browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 800 }
+        });
+        
         const pageInstance = await context.newPage();
-
-        // 核心优化：拦截并禁用所有非 HTML 资源，极大降低内存占用
+        
+        // 资源拦截优化：只保留文档和脚本（如果需要 JS 渲染）
         await pageInstance.route('**/*', (route) => {
             const type = route.request().resourceType();
-            if (['image', 'stylesheet', 'font', 'media', 'other'].includes(type)) {
+            if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
                 return route.abort();
             }
             return route.continue();
         });
 
-        // 导航至目标页面
-        await pageInstance.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        this.pageCount++;
+        return { page: pageInstance, context };
+    }
 
-        // 获取渲染后的 HTML
+    async close() {
+        if (this.browser) {
+            try {
+                await this.browser.close();
+            } catch (e) { /* ignore */ }
+            this.browser = null;
+        }
+    }
+}
+
+// 全局单例管理器
+const manager = new BrowserManager();
+
+export async function fetchProxies({ protocol = '', country = '', speed = '', page = 1 }) {
+    const url = `https://www.freeproxy.world/?type=${protocol}&country=${country}&speed=${speed}&page=${page}`;
+    
+    let instance = null;
+    try {
+        instance = await manager.getPage();
+        const { page: pageInstance, context } = instance;
+
+        // 尝试使用更稳妥的等待方式
+        const response = await pageInstance.goto(url, { 
+            waitUntil: 'domcontentloaded', 
+            timeout: 45000 
+        });
+
+        if (response && !response.ok()) {
+            console.warn(`[Playwright] 页面状态异常: ${response.status()} for ${url}`);
+        }
+
         const html = await pageInstance.content();
         const $ = cheerio.load(html);
         const results = [];
 
-        $('tr').each((_, row) => {
+        const rows = $('tr');
+        console.log(`[Playwright] 抓取完成: ${url}, Rows: ${rows.length}, Size: ${(html.length/1024).toFixed(1)}KB`);
+
+        rows.each((_, row) => {
             const cells = $(row).find('td');
             if (cells.length < 4) return;
 
@@ -86,11 +128,22 @@ export async function fetchProxies({ protocol = '', country = '', speed = '', pa
             });
         });
 
+        await pageInstance.close();
+        await context.close();
         return results;
     } catch (err) {
-        console.error(`[Playwright] 抓取失败: ${err.message}`);
+        console.error(`[Playwright] 抓取异常 (${url}): ${err.message}`);
+        if (instance) {
+            if (instance.page) try { await instance.page.close(); } catch (e) { /* ignore */ }
+            if (instance.context) try { await instance.context.close(); } catch (e) { /* ignore */ }
+        }
         return [];
-    } finally {
-        if (browser) await browser.close();
     }
+}
+
+/**
+ * 彻底释放资源
+ */
+export async function closeBrowser() {
+    await manager.close();
 }
