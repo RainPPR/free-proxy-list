@@ -57,8 +57,8 @@ runtime:
   # 代理存活老龄节点重新复检周期间隔（单位毫秒，4h = 14400000ms）
   recheck_interval: 14400000
   
-  # 死链日志自动抛弃阈值（单位毫秒，24h = 86400000ms）
-  purge_deleted_logs_interval: 86400000
+  # 死链日志自动抛弃阈值（单位毫秒，120h = 432000000ms）
+  purge_deleted_logs_interval: 432000000
   
   # 插件执行间隔时间（单位秒，3h = 10800s）
   plugin_interval_seconds: 10800
