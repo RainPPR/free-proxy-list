@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -41,20 +41,21 @@ function sortNodes(nodes) {
 function runPlugin(pluginDef) {
     if (!pluginDef.enabled) return;
 
-    const { name, command, entry } = pluginDef;
+    const { name, entry } = pluginDef;
     const entryAbs = path.resolve(process.cwd(), entry);
 
-    logger.info(`[Scheduler] 🚀 触发插件执行: ${name} (${command} ${entryAbs})`);
+    logger.info(`[Scheduler] 🚀 触发插件执行: ${name} (node ${entryAbs})`);
 
     const MAX_LIFETIME = 1800000; // 最大运行时间延长至 30 分钟
 
-    let custom_args = [entryAbs]
-
-    if (command === 'uv') {
-        custom_args = ['run', entryAbs]
+    // 统一使用 node 执行
+    const args = [entryAbs];
+    // 如果有额外的参数（例如 --cn），可以在这里添加
+    if (pluginDef.args) {
+        args.push(...pluginDef.args);
     }
 
-    execFile(command, custom_args, { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
+    execFile('/nodejs/bin/node', args, { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
         if (error) {
             if (error.killed) {
                 logger.error(`[Scheduler] ❌ 插件 ${name} 运行超时(${MAX_LIFETIME}ms)，已被强杀。`);

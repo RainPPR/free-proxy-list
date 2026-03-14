@@ -1,9 +1,0 @@
-[project]
-name = "free-proxy-list"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.14"
-dependencies = [
-    "scrapling[fetchers]>=0.4.2",
-]

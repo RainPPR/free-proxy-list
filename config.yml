@@ -71,42 +71,35 @@ plugins:
   
   - name: "freeproxylist"
     enabled: true
-    command: "node"
     entry: "plugins/freeproxylist/main.js"
     region: "global"
     
   - name: "proxyscrape"
     enabled: true
-    command: "node"
     entry: "plugins/proxyscrape/index.js"
     region: "global"
 
   - name: "freeproxylist-cn"
     enabled: true
-    command: "node"
     entry: "plugins/freeproxylist-cn/main.js"
     region: "cn"
 
   - name: "proxyscrape-cn"
     enabled: true
-    command: "node"
     entry: "plugins/proxyscrape-cn/index.js"
     region: "cn"
     
   - name: "freeproxy"
-    command: "node"
     entry: "plugins/freeproxy/main.js"
     enabled: true
     region: "global"
 
   - name: "freeproxyworld-cn"
     enabled: true
-    command: "uv"
-    entry: "plugins/freeproxyworld/cn.py"
+    entry: "plugins/freeproxyworld/cn.js"
     region: "cn"
 
   - name: "freeproxyworld"
     enabled: true
-    command: "uv"
-    entry: "plugins/freeproxyworld/global.py"
+    entry: "plugins/freeproxyworld/global.js"
     region: "global"
