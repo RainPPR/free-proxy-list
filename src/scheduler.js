@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { plugins as pluginRegistry } from './plugins.js';
+import plugins from './plugins.js';
 import { config, logger, globalState } from './config.js';
 import { statements } from './db.js';
 
@@ -15,13 +15,15 @@ function generateHash(proxy) {
 
 /**
  * 运行单个插件并入库 (内存模式)
- * @param {string} pluginName 插件名称
- * @param {string} region 区域 (global/cn)
+ * @param {Object} plugin 插件配置对象，包含 name, region, fn 等属性
  */
-async function runPlugin(pluginName, region) {
-  const pluginFn = pluginRegistry[region]?.[pluginName];
+async function runPlugin(plugin) {
+  const pluginFn = plugin.fn;
+  const pluginName = plugin.name;
+  const region = plugin.region;
+  
   if (!pluginFn) {
-    logger.warn(`[Scheduler] ⚠️ 找不到插件映射: ${pluginName} (${region})`);
+    logger.warn(`[Scheduler] ⚠️ 找不到插件函数: ${pluginName} (${region})`);
     return;
   }
 
@@ -77,7 +79,7 @@ async function runScheduleBatch() {
   logger.info(`[Scheduler] 开始由 ${pluginsConfig.length} 个插件构成的采集轮次...`);
 
   for (const p of pluginsConfig) {
-    await runPlugin(p.name, p.region);
+    await runPlugin(p);
     // 每个插件执行完后微休眠，给验证引擎留点资源，也让 GC 有机会工作
     await new Promise(r => setTimeout(r, 2000));
   }

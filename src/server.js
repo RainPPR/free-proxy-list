@@ -31,7 +31,8 @@ app.get('/api/cn/stats', (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-app.get('/api/:area?/nodes/:type', (req, res) => {
+// 带区域参数的路由
+app.get('/api/:area/nodes/:type', (req, res) => {
   const region = req.params.area === 'cn' ? 'cn' : 'global';
   const type = req.params.type;
   try {
@@ -42,8 +43,64 @@ app.get('/api/:area?/nodes/:type', (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-app.get('/api/:area?/subconverter', (req, res) => {
+// 不带区域参数的路由（默认 global）
+app.get('/api/nodes/:type', (req, res) => {
+  const region = 'global';
+  const type = req.params.type;
+  try {
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 100), 1000);
+    const offset = (Math.max(1, parseInt(req.query.page) || 1) - 1) * limit;
+    const nodes = (type === 'highperf') ? statements.getHighPerformanceNodes.all(region, limit, offset) : statements.getAvailableNodesForSub.all(region, limit, offset);
+    res.json({ success: true, data: nodes });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/:area/subconverter', (req, res) => {
   const region = req.params.area === 'cn' ? 'cn' : 'global';
+  try {
+    const { target = 'base64', list = 'available', country, type, speed, delay, sort, order, udp } = req.query;
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 500), 1000);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+
+    const nodes = searchNodes({ country, type, speed, delay, sort, order, limit, page, region, listType: list });
+    if (!nodes || nodes.length === 0) return target === 'raw' ? res.json({ success: true, data: [] }) : res.status(404).send('No nodes found');
+
+    if (target === 'raw') return res.json({ success: true, data: nodes });
+
+    // 格式化输出逻辑
+    if (target === 'clash' || target === 'clash-provider') {
+      let yaml = 'proxies:\n';
+      nodes.forEach(n => {
+        let proto = n.protocol === 'socks4' || n.protocol === 'socks5' ? 'socks5' : n.protocol;
+        yaml += `  - name: "${nodeName(n)}"\n    type: ${proto}\n    server: ${n.ip}\n    port: ${n.port}${n.protocol === 'https' ? '\n    tls: true' : ''}\n`;
+      });
+      if (target === 'clash-provider') { res.setHeader('Content-Type', 'text/yaml'); return res.send(yaml); }
+      yaml += '\nproxy-groups:\n  - name: "Auto"\n    type: url-test\n    proxies:\n';
+      nodes.forEach(n => yaml += `      - "${nodeName(n)}"\n`);
+      yaml += '    url: "http://www.gstatic.com/generate_204"\n    interval: 300\n';
+      res.setHeader('Content-Type', 'text/yaml');
+      return res.send(yaml);
+    }
+
+    if (target === 'v2ray') {
+      const v2 = nodes.map(n => ({ remark: nodeName(n), protocol: n.protocol.startsWith('socks')?'socks':'http', server: n.ip, port: n.port, tls: n.protocol === 'https' }));
+      res.setHeader('Content-Type', 'text/plain');
+      return res.send(Buffer.from(JSON.stringify({ version: 1, server: v2 })).toString('base64'));
+    }
+
+    const rawLinks = nodes.map(n => `${n.protocol}://${n.ip}:${n.port}#${encodeURIComponent(nodeName(n))}`).join('\n');
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(Buffer.from(rawLinks).toString('base64'));
+
+  } catch (err) {
+    logger.error(`[API] Subconverter Error: ${err.message}`);
+    res.status(500).send('API Error');
+  }
+});
+
+// 不带区域参数的路由（默认 global）
+app.get('/api/subconverter', (req, res) => {
+  const region = 'global';
   try {
     const { target = 'base64', list = 'available', country, type, speed, delay, sort, order, udp } = req.query;
     const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 500), 1000);

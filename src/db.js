@@ -172,7 +172,7 @@ export function searchNodes(filters = {}) {
     params.push(parseInt(delay, 10));
   }
 
-  const allowedSortFields = ['protocol', 'short_name', 'download_speed_bps', 'google_latency', 'last_checked'];
+  const allowedSortFields = ['protocol', 'short_name', 'download_speed_bps', 'google_latency', 'msft_latency', 'hicmatch_latency', 'last_checked'];
   const sortField = allowedSortFields.includes(sort) ? sort : 'status';
   const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
   

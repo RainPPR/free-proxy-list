@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
+import pluginsConfig from './plugins.js';
 
 const defaultConfigPath = path.resolve(process.cwd(), 'config.yml');
 
@@ -35,7 +36,7 @@ export const config = {
     purgeDeletedLogsIntervalMs: rawConfig?.runtime?.purge_deleted_logs_interval || 86400000
   },
   pluginIntervalSeconds: rawConfig?.runtime?.plugin_interval_seconds || 14400,
-  plugins: rawConfig?.plugins || []
+  plugins: rawConfig?.plugins || pluginsConfig.plugins
 };
 
 // 工具方法：精简日志
