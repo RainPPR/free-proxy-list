@@ -55,7 +55,7 @@ function runPlugin(pluginDef) {
         args.push(...pluginDef.args);
     }
 
-    execFile('/nodejs/bin/node', args, { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
+    execFile('node', args, { timeout: MAX_LIFETIME }, async (error, stdout, stderr) => {
         if (error) {
             if (error.killed) {
                 logger.error(`[Scheduler] ❌ 插件 ${name} 运行超时(${MAX_LIFETIME}ms)，已被强杀。`);
