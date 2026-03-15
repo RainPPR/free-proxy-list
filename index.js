@@ -12,7 +12,11 @@ async function bootstrap() {
   logger.info(`[System] ====== Free Proxy List 启动 ======`);
   
   // 0. 初始化管理凭据
-  initAuth();
+  try {
+    await initAuth();
+  } catch (err) {
+    logger.error(`[Auth] 初始化失败: ${err.message}`);
+  }
 
   // 1. 启动 HTTP 和 Dashboard API
   serverHandle = startServer();
@@ -62,7 +66,7 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // 处理可能被遗漏的在 Promise 中的错
 process.on('unhandledRejection', (reason, p) => {
-  logger.error('[System] ❌ 未捕获的 Promise 异常:', reason);
+  logger.error('[System] ❌ 未捕获的 Promise 异常:', reason, p);
 });
 
 process.on('uncaughtException', (err) => {

@@ -1,9 +1,12 @@
+import { dirname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+
 import { config, logger } from './config.js';
 
 // 确保数据库目录存在
-const dbDir = Bun.dirname(config.app.dbPath);
-if (!Bun.exists(dbDir)) {
-  Bun.mkdir(dbDir, { recursive: true });
+const dbDir = dirname(config.app.dbPath);
+if (!existsSync(dbDir)) {
+  mkdirSync(dbDir, { recursive: true });
 }
 
 // 创建数据库（bun:sqlite API）

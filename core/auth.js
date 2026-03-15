@@ -1,6 +1,9 @@
 import { logger } from './config.js';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const ADMIN_CREDS_PATH = Bun.resolveSync('./data/admin_creds.txt', import.meta.dir);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ADMIN_CREDS_PATH = resolve(__dirname, '../data/admin_creds.txt');
 
 // 内存中缓存当前凭据，避免频繁读文件
 let currentCreds = {
@@ -15,6 +18,9 @@ export async function initAuth() {
     try {
         // 尝试读取文件，如果文件不存在会抛出错误
         const credsFile = Bun.file(ADMIN_CREDS_PATH);
+        if (!await credsFile.exists()) {
+            throw new Error('File does not exist');
+        }
         const content = await credsFile.text();
         const lines = content.split('\n');
         const uuidMatch = lines.find(l => l.startsWith('UUID:'))?.split(':')[1]?.trim();
@@ -41,7 +47,9 @@ export async function initAuth() {
  */
 export async function resetAdminCreds(isInitial = false) {
     const newUuid = crypto.randomUUID();
-    const newToken = crypto.randomBytes(16).toString('hex');
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    const newToken = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
 
     currentCreds.uuid = newUuid;
     currentCreds.token = newToken;
@@ -58,7 +66,8 @@ Generated at: ${new Date().toISOString()}
 
     try {
         // 使用Bun的文件系统API
-        await Bun.write(ADMIN_CREDS_PATH, content);
+        const file = Bun.file(ADMIN_CREDS_PATH);
+        await file.write(content);
         
         // 按照用户要求：输出到终端和文件
         console.log('\x1b[33m%s\x1b[0m', content); 
