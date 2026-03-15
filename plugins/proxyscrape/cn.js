@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { fetchText } from '../../utils/fetch-utils.js';
 
 /**
  * ProxyScrape CN 专属接口提取器 (V4 JSON 格式)
@@ -8,8 +8,8 @@ export default async function fetch() {
   const url = 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&country=cn&proxy_format=protocolipport&format=json&timeout=20000';
   
   try {
-    const res = await axios.get(url, { timeout: 25000 });
-    const data = res.data;
+    const text = await fetchText(url, { timeout: 25000 });
+    const data = text;
     
     // V4 JSON 格式通常包含一个 proxies 数组
     const rawNodes = data.proxies || [];

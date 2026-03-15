@@ -1,12 +1,12 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+import { fetchText } from '../../utils/fetch-utils.js';
+import { load } from '../../utils/html-utils.js';
 
 /**
  * freeproxylist 主爬虫
  * 聚合多子页面源，支持自动解析与去重。
  * 
  * 性能优化点：
- * 1. 使用 axios 替代原生 https 模块以支持更智能的并发超时控制。
+ * 1. 使用 Bun.fetch 替代 axios 以支持更智能的并发超时控制。
  * 2. 使用 Map 进行内存内去重。
  */
 
@@ -26,7 +26,7 @@ const ENDPOINTS = [
  * @param {boolean} isSocksPage 
  */
 function parseTable(html, isSocksPage) {
-  const $ = cheerio.load(html);
+  const $ = load(html);
   const rows = [];
   
   // 核心选择器：针对 free-proxy-list.net 的表格结构
@@ -82,14 +82,14 @@ export default async function fetch() {
   try {
     for (const { url, isSocks } of ENDPOINTS) {
       try {
-        const res = await axios.get(url, { 
+        const html = await fetchText(url, { 
           timeout: timeoutLimit,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           }
         });
 
-        const proxies = parseTable(res.data, isSocks);
+        const proxies = parseTable(html, isSocks);
         for (const p of proxies) {
           const key = `${p.protocol}://${p.ip}:${p.port}`;
           if (!allProxies.has(key)) {

@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { fetchText } from '../../utils/fetch-utils.js';
 
 
 
@@ -9,8 +9,8 @@ import axios from 'axios';
 
 async function fetchFromEndpoint(protocol, url) {
   try {
-    const res = await axios.get(url, { responseType: 'text', timeout: 15000 });
-    const lines = res.data.split('\n');
+    const text = await fetchText(url, { timeout: 15000 });
+    const lines = text.split('\n');
     const proxies = [];
 
     for (const line of lines) {

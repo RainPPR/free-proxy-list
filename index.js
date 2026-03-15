@@ -1,10 +1,10 @@
-import { logger } from './config.js';
-import { closeDb, reclassifyHighPerformanceNodes } from './db.js';
-import { initScheduler, stopScheduler } from './scheduler.js';
-import { startValidatorEngine } from './validator.js';
-import { initMaintenance, stopMaintenance } from './maintenance.js';
-import { startServer } from './server.js';
-import { initAuth } from './auth.js';
+import { logger } from './core/config.js';
+import { closeDb, reclassifyHighPerformanceNodes } from './core/db.js';
+import { initScheduler, stopScheduler } from './core/scheduler.js';
+import { startValidatorEngine } from './core/validator.js';
+import { initMaintenance, stopMaintenance } from './core/maintenance.js';
+import { startServer } from './server/server.js';
+import { initAuth } from './core/auth.js';
 
 let serverHandle = null;
 

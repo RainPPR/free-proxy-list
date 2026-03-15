@@ -1,5 +1,5 @@
-import axios from 'axios';
-import { basename } from 'node:path';
+import { fetchText } from '../../utils/fetch-utils.js';
+;
 
 /**
  * proxyspace 插件
@@ -9,8 +9,8 @@ import { basename } from 'node:path';
 async function fetchFromEndpoint(url) {
   try {
     const protocol = basename(url).replace('.txt', '').toLowerCase();
-    const res = await axios.get(url, { responseType: 'text', timeout: 15000 });
-    const lines = res.data.split('\n');
+    const text = await fetchText(url, { timeout: 15000 });
+    const lines = text.split('\n');
     const proxies = [];
 
     for (const line of lines) {

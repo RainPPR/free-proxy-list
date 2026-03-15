@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { fetchText } from '../../utils/fetch-utils.js';
 
 /**
  * freeproxydb 插件 (全球版)
@@ -19,8 +19,8 @@ const BASE_URL = `https://freeproxydb.com/api/proxy/search?country=&protocol=soc
 async function fetchPage(pageIndex) {
   const url = `${BASE_URL}&page_index=${pageIndex}`;
   try {
-    const res = await axios.get(url, { timeout: 20000 });
-    return res.data;
+    const text = await fetchText(url, { timeout: 20000 });
+    return text;
   } catch (err) {
     return null;
   }

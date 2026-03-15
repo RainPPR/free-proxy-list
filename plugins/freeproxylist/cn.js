@@ -1,12 +1,12 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+import { fetchText } from '../../utils/fetch-utils.js';
+import { load } from '../../utils/html-utils.js';
 
 /**
  * freeproxylist-cn 插件
  * 目标：从 free-proxy-list.net 获取代理列表并仅筛选中国区节点
  * 
  * 性能优化点：
- * 1. 统一迁移至 axios 以减少 Buffer 操作开销。
+ * 1. 使用 Bun.fetch 替代 axios 以减少 Buffer 操作开销。
  * 2. 移除原有的 totalNodes 错误引用。
  * 3. 使用内存内 Map 进行快速去重。
  */
@@ -22,7 +22,7 @@ const ENDPOINTS = [
  * @param {boolean} isSocksPage 
  */
 function parseTable(html, isSocksPage) {
-  const $ = cheerio.load(html);
+  const $ = load(html);
   const rows = [];
   
   const table = $('#list > div > div.table-responsive > div > table');
@@ -80,14 +80,14 @@ export default async function fetch() {
   try {
     for (const { url, isSocks } of ENDPOINTS) {
       try {
-        const res = await axios.get(url, { 
+        const html = await fetchText(url, { 
           timeout: timeoutLimit,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           }
         });
 
-        const proxies = parseTable(res.data, isSocks);
+        const proxies = parseTable(html, isSocks);
         for (const p of proxies) {
           const key = `${p.protocol}://${p.ip}:${p.port}`;
           if (!allProxies.has(key)) {

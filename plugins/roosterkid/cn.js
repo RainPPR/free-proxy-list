@@ -1,5 +1,5 @@
-import axios from 'axios';
-import { basename } from 'node:path';
+import { fetchText } from '../../utils/fetch-utils.js';
+;
 
 
 /**
@@ -10,8 +10,8 @@ import { basename } from 'node:path';
 async function fetchFromEndpoint(url) {
   try {
     const protocol = basename(url).replace('.txt', '').toLowerCase();
-    const res = await axios.get(url, { responseType: 'text', timeout: 20000 });
-    const lines = res.data.split('\n');
+    const text = await fetchText(url, { timeout: 20000 });
+    const lines = text.split('\n');
     const proxies = [];
 
     for (const line of lines) {

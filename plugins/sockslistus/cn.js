@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { fetchText } from '../../utils/fetch-utils.js';
 
 /**
  * sockslist-us-cn 插件 (中国区专有 API)
@@ -9,8 +9,8 @@ export default async function fetch() {
   const url = 'https://sockslist.us/Api?request=display&country=CHN&level=all&token=free';
   
   try {
-    const res = await axios.get(url, { responseType: 'json', timeout: 20000 });
-    const data = res.data;
+    const text = await fetchText(url, { responseType: 'json', timeout: 20000 });
+    const data = text;
     const proxies = [];
 
     if (Array.isArray(data)) {

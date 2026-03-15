@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { fetchText } from '../../utils/fetch-utils.js';
 
 /**
  * mmpx12 插件
@@ -9,8 +9,8 @@ export default async function fetch() {
   const url = 'https://raw.githubusercontent.com/mmpx12/proxy-list/refs/heads/master/proxies.txt';
   
   try {
-    const res = await axios.get(url, { responseType: 'text', timeout: 20000 });
-    const lines = res.data.split('\n');
+    const text = await fetchText(url, { timeout: 20000 });
+    const lines = text.split('\n');
     const proxies = [];
 
     for (const line of lines) {

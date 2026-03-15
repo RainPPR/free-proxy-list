@@ -88,7 +88,17 @@ export const statements = {
     SELECT * FROM proxies WHERE 
       status = 0 OR 
       (status IN (1, 2) AND last_checked < ?) 
-    ORDER BY status ASC, last_checked ASC
+    ORDER BY 
+      CASE WHEN protocol IN ('socks5', 'socks4') THEN 1
+           WHEN protocol = 'https' THEN 2
+           ELSE 3 END,
+      CASE WHEN short_name IN ('HK', 'TW', 'SG', 'JP', 'GB', 'US', 'DE', 'KR') THEN 1
+           WHEN short_name NOT IN ('Unknown', 'ZZ') AND short_name IS NOT NULL THEN 2
+           ELSE 3 END,
+      CASE WHEN long_name != short_name AND long_name != 'Unknown' AND long_name IS NOT NULL THEN 1
+           ELSE 2 END,
+      status ASC, 
+      last_checked ASC
     LIMIT ?
   `),
 
@@ -127,19 +137,33 @@ export const statements = {
       (SELECT COUNT(*) FROM deleted_logs WHERE region = ?) as deletedLogsCount
   `),
 
-  // 订阅/显示排序（按用户要求的规则）：
-  // 高性能节点按 Google 延迟升序
-  // 可用节点：速度>=1MB/s 按延迟降序；速度<1MB/s 按速度降序
+  // 订阅/显示排序（按用户要求的规则，使用 UNION ALL 正确实现三级排序）：
+  // 1. 高性能节点 (status=2) 按 Google 延迟升序
+  // 2. 可用节点中速度>=1MB/s (1048576 bps) 按延迟降序
+  // 3. 可用节点中速度<1MB/s 按速度降序
   getAvailableNodesForSub: db.prepare(`
-    SELECT * FROM proxies 
-    WHERE status IN (1, 2) AND region = ?
+    SELECT * FROM (
+      -- 第一组：高性能节点 (status=2) 按 Google 延迟升序
+      SELECT *, 1 as sort_group FROM proxies WHERE status = 2 AND region = ?
+      
+      UNION ALL
+      
+      -- 第二组：可用节点且速度≥1MB/s 按延迟降序
+      SELECT *, 2 as sort_group FROM proxies WHERE status = 1 AND download_speed_bps >= 1048576 AND region = ?
+      
+      UNION ALL
+      
+      -- 第三组：可用节点且速度<1MB/s 按速度降序
+      SELECT *, 3 as sort_group FROM proxies WHERE status = 1 AND download_speed_bps < 1048576 AND region = ?
+    )
     ORDER BY 
-      status DESC,
+      sort_group,
       CASE 
-        WHEN status = 2 THEN google_latency 
-        WHEN status = 1 AND download_speed_bps >= 1048576 THEN -google_latency 
-        ELSE -download_speed_bps 
-      END DESC
+        WHEN sort_group = 1 THEN google_latency  -- 高性能：延迟升序
+        WHEN sort_group = 2 THEN google_latency * -1  -- 可用且速度≥1MB/s：延迟降序（乘-1实现降序）
+        WHEN sort_group = 3 THEN download_speed_bps * -1  -- 可用且速度<1MB/s：速度降序
+        ELSE 0 
+      END
     LIMIT ? OFFSET ?
   `),
 
@@ -150,12 +174,8 @@ export const statements = {
     LIMIT ? OFFSET ?
   `),
 
-  getAllHighPerformanceNodes: db.prepare(`
-    SELECT * FROM proxies WHERE status = 2
-  `),
-  getAllAvailableNodes: db.prepare(`
-    SELECT * FROM proxies WHERE status = 1
-  `),
+  getAllHighPerformanceNodes: db.prepare(`SELECT * FROM proxies WHERE status = 2`),
+  getAllAvailableNodes: db.prepare(`SELECT * FROM proxies WHERE status = 1`),
   
   clearAllData: db.prepare(`DELETE FROM proxies`),
   clearDeletedLogs: db.prepare(`DELETE FROM deleted_logs`)
@@ -192,11 +212,19 @@ export function searchNodes(filters = {}) {
     params.push(parseInt(delay, 10));
   }
 
-  // 订阅/显示排序规则
-  if (listType === 'highperf') {
-    sql += ` ORDER BY google_latency ASC`;
+  // 排序支持：如果指定了sort参数，使用它；否则使用默认排序
+  if (sort) {
+    const validSortFields = ['google_latency', 'download_speed_bps', 'ping_latency', 'last_checked'];
+    if (validSortFields.includes(sort)) {
+      const direction = order?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+      sql += ` ORDER BY ${sort} ${direction}`;
+    } else {
+      // 如果sort无效，使用默认排序
+      sql += getDefaultOrderSql(listType, region);
+    }
   } else {
-    sql += ` ORDER BY status DESC, CASE WHEN download_speed_bps >= 1048576 THEN google_latency DESC ELSE download_speed_bps DESC END`;
+    // 使用默认排序
+    sql += getDefaultOrderSql(listType, region);
   }
   
   sql += ` LIMIT ? OFFSET ?`;
@@ -205,12 +233,32 @@ export function searchNodes(filters = {}) {
   return db.prepare(sql).all(...params);
 }
 
+function getDefaultOrderSql(listType, region) {
+  if (listType === 'highperf') {
+    return ` ORDER BY google_latency ASC`;
+  } else {
+    // 默认三级排序规则：
+    // 1. 高性能节点在前 (status=2)
+    // 2. 高性能节点按 Google 延迟升序
+    // 3. 可用节点中速度>=1MB/s的按延迟降序
+    // 4. 可用节点中速度<1MB/s的按速度降序
+    return ` ORDER BY 
+      status DESC,
+      CASE 
+        WHEN status = 2 THEN google_latency
+        WHEN status = 1 AND download_speed_bps >= 1048576 THEN google_latency * -1
+        ELSE download_speed_bps * -1
+      END`;
+  }
+}
+
 /**
  * 重新分类高性能节点（根据配置的高性能标准）
  * 当高性能标准（highPerformanceMinBps）发生变化时，需要调用此函数
- * 遍历所有 status=1 和 status=2 的节点，双向调整：
+ * 遍历所有节点（包括 status=0,1,2），双向调整：
  * - 降级：status=2 但速度 < threshold 的节点降为 status=1
- * - 升级：status=1 但速度 >= threshold 的节点升为 status=2
+ * - 升级：status<2 但速度 >= threshold 的节点升为 status=2
+ * - 注意：status=0 的节点如果速度达标也会被升级
  * @param {string} region - 区域（'global' 或 'cn'），如果为 null 则处理所有区域
  */
 export function reclassifyHighPerformanceNodes(region = null) {
@@ -221,51 +269,51 @@ export function reclassifyHighPerformanceNodes(region = null) {
   }
   
   try {
-    // 如果指定了 region，只处理该区域；否则处理所有区域
-    let allHighPerfNodes;
-    let allAvailableNodes;
     const now = Date.now();
     
+    // 查询所有节点（如果指定region则只查询该区域）
+    let allNodes;
     if (region) {
-      allHighPerfNodes = statements.getAllHighPerformanceNodes.all(region);
-      allAvailableNodes = statements.getAllAvailableNodes.all(region);
+      allNodes = db.prepare(`SELECT * FROM proxies WHERE region = ?`).all(region);
     } else {
-      // 查询所有 status=2 和 status=1 的节点（所有区域）
-      allHighPerfNodes = db.prepare(`SELECT * FROM proxies WHERE status = 2`).all();
-      allAvailableNodes = db.prepare(`SELECT * FROM proxies WHERE status = 1`).all();
+      allNodes = db.prepare(`SELECT * FROM proxies`).all();
     }
     
-    // 调试：记录实际查询到的节点数
-    logger.info(`[DB] 查询到 ${allHighPerfNodes.length} 个 status=2 节点, ${allAvailableNodes.length} 个 status=1 节点`);
+    logger.info(`[DB] 查询到 ${allNodes.length} 个节点进行重分类`);
     
     let demotedCount = 0;
     let keptCount = 0;
     let promotedCount = 0;
+    let unchangedCount = 0;
     
-    // 1. 处理 status=2 节点：降级不达标的
-    for (const node of allHighPerfNodes) {
+    for (const node of allNodes) {
       const speed = node.download_speed_bps || 0;
-      if (speed < config.runtime.highPerformanceMinBps) {
+      const currentStatus = node.status;
+      
+      if (currentStatus === 2 && speed < config.runtime.highPerformanceMinBps) {
+        // 降级：当前是高性能但不达标 → 降为 status=1
         statements.updateProxySpeed.run(now, speed, speed, speed, node.hash, node.region);
         demotedCount++;
-      } else {
-        keptCount++;
-      }
-    }
-    
-    // 2. 处理 status=1 节点：升级达标的
-    for (const node of allAvailableNodes) {
-      const speed = node.download_speed_bps || 0;
-      if (speed >= config.runtime.highPerformanceMinBps) {
+      } else if (currentStatus < 2 && speed >= config.runtime.highPerformanceMinBps) {
+        // 升级：当前非高性能且达标 → 升为 status=2
         statements.updateProxySpeed.run(now, speed, speed, speed, node.hash, node.region);
         promotedCount++;
+      } else if (currentStatus === 2 && speed >= config.runtime.highPerformanceMinBps) {
+        // 保持：当前是高性能且达标
+        keptCount++;
+      } else {
+        // 其他情况：不改变状态（例如status=0或1但不达标）
+        unchangedCount++;
       }
     }
     
-    logger.info(`[DB] 高性能节点重分类完成: 保持 ${keptCount}，降级 ${demotedCount}，升级 ${promotedCount}`);
+    logger.info(`[DB] 高性能节点重分类完成: 总计 ${allNodes.length}，保持 ${keptCount}，降级 ${demotedCount}，升级 ${promotedCount}，不变 ${unchangedCount}`);
     return { 
-      highPerf: { total: allHighPerfNodes.length, kept: keptCount, demoted: demotedCount },
-      available: { total: allAvailableNodes.length, promoted: promotedCount }
+      total: allNodes.length, 
+      kept: keptCount, 
+      demoted: demotedCount,
+      promoted: promotedCount,
+      unchanged: unchangedCount
     };
   } catch (err) {
     logger.error(`[DB] 重新分类高性能节点失败: ${err.message}`);

@@ -1,0 +1,20 @@
+[app]
+port = 8080
+log_level = "info"
+db_path = "./data/proxy.sqlite"
+
+[external]
+subconverter_url = "https://api.wcc.best/sub"
+
+[runtime]
+validation_concurrency = 32
+delay_between_tests = 0
+timeout_threshold = 5000
+max_retries = 3
+speedtest_timeout = 10000
+delay_between_speedtests = 0
+speedtest_concurrency = 8
+high_performance_min_bps = 5242880
+recheck_interval = 14400000
+purge_deleted_logs_interval = 86400000
+plugin_interval_seconds = 14400

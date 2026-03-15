@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { fetchText } from '../../utils/fetch-utils.js';
 
 /**
  * redscrape-cn 插件
@@ -9,8 +9,8 @@ export default async function fetch() {
   const url = 'https://free.redscrape.com/api/proxies?format=json';
   
   try {
-    const res = await axios.get(url, { responseType: 'json', timeout: 20000 });
-    const data = res.data;
+    const text = await fetchText(url, { responseType: 'json', timeout: 20000 });
+    const data = text;
     const proxies = [];
 
     if (Array.isArray(data)) {

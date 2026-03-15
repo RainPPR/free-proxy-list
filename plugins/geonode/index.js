@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { fetchText } from '../../utils/fetch-utils.js';
 
 /**
  * geonode 插件 (全球版)
@@ -16,8 +16,8 @@ import axios from 'axios';
 async function fetchPage(page) {
   const url = `https://proxylist.geonode.com/api/proxy-list?limit=500&page=${page}&sort_by=lastChecked&sort_type=desc`;
   try {
-    const res = await axios.get(url, { timeout: 30000 });
-    return res.data;
+    const text = await fetchText(url, { timeout: 30000 });
+    return text;
   } catch (err) {
     return null;
   }

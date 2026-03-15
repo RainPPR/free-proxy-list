@@ -1,5 +1,4 @@
-import crypto from 'node:crypto';
-import plugins from './plugins.js';
+import plugins from '../plugins/plugins.js';
 import { config, logger, globalState } from './config.js';
 import { statements } from './db.js';
 
@@ -10,7 +9,13 @@ let schedulerTimer = null;
  */
 function generateHash(proxy) {
   const s = `${proxy.protocol}://${proxy.ip}:${proxy.port}`;
-  return crypto.createHash('md5').update(s).digest('hex');
+  // 使用Bun内置的Crypto API
+  const encoder = new TextEncoder();
+  const data = encoder.encode(s);
+  const hashBuffer = Bun.CryptoHasher.hash('md5', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 /**
@@ -93,17 +98,18 @@ async function runPlugin(plugin) {
       const isBlacklisted = statements.isDeleted.get(hash, region);
       if (isBlacklisted) continue;
 
-      statements.insertOrUpdateReadyProxy.run({
+      statements.insertOrUpdateReadyProxy.run(
         hash,
-        protocol: p.protocol.toLowerCase(),
-        ip: p.ip,
-        port: parseInt(p.port, 10),
-        shortName: p.shortName || 'Unknown',
-        longName: p.longName || 'Unknown',
-        remark: p.remark || pluginName,
+        p.protocol.toLowerCase(),
+        p.ip,
+        parseInt(p.port, 10),
+        p.shortName || 'Unknown',
+        p.longName || 'Unknown',
+        p.remark || pluginName,
         region,
-        now
-      });
+        now,  // first_added
+        now   // last_added (ON CONFLICT 会更新)
+      );
       addedCount++;
     }
 

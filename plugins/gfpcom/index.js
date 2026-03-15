@@ -1,5 +1,5 @@
-import axios from 'axios';
-import { URL } from 'node:url';
+import { fetchText } from '../../utils/fetch-utils.js';
+;
 
 /**
  * gfpcom 插件
@@ -17,8 +17,8 @@ import { URL } from 'node:url';
  */
 async function fetchFromEndpoint(url) {
   try {
-    const res = await axios.get(url, { responseType: 'text', timeout: 15000 });
-    const lines = res.data.split('\n');
+    const text = await fetchText(url, { timeout: 15000 });
+    const lines = text.split('\n');
     const proxies = [];
 
     for (const line of lines) {

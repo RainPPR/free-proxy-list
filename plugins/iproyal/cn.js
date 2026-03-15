@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { fetchText } from '../../utils/fetch-utils.js';
 
 /**
  * iproyal-cn 插件
@@ -25,8 +25,8 @@ const COMMON_HEADERS = {
 async function fetchPage(page) {
   const url = `https://cms.iproyal.com/api/free-proxy-records?fields[0]=ip&fields[1]=port&fields[2]=protocol&fields[3]=country&fields[4]=city&pagination[page]=${page}&pagination[pageSize]=1000`;
   try {
-    const res = await axios.get(url, { headers: COMMON_HEADERS, timeout: 30000 });
-    return res.data;
+    const text = await fetchText(url, { headers: COMMON_HEADERS, timeout: 30000 });
+    return text;
   } catch (err) {
     return null;
   }
