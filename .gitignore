@@ -314,3 +314,4 @@ pyrightconfig.json
 
 data/
 data.json
+proxy.online.sqlite
