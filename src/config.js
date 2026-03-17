@@ -31,8 +31,7 @@ export const config = {
     recheckIntervalMs: rawConfig.runtime?.recheck_interval || 28800000,
     purgeDeletedLogsIntervalMs: rawConfig.runtime?.purge_deleted_logs_interval || 86400000
   },
-  pluginIntervalSeconds: rawConfig.runtime?.plugin_interval_seconds || 14400,
-  plugins: rawConfig.plugins || {}
+  pluginIntervalSeconds: rawConfig.runtime?.plugin_interval_seconds || 14400
 };
 
 // 工具方法：精简日志

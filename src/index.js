@@ -1,10 +1,10 @@
-import { logger } from './core/config.js';
-import { closeDb, reclassifyHighPerformanceNodes } from './core/db.js';
-import { initScheduler, stopScheduler } from './core/scheduler.js';
-import { startValidatorEngine } from './core/validator.js';
-import { initMaintenance, stopMaintenance } from './core/maintenance.js';
-import { startServer } from './server/server.js';
-import { initAuth } from './core/auth.js';
+import { logger } from './config.js';
+import { closeDb, reclassifyHighPerformanceNodes } from './db.js';
+import { initScheduler, stopScheduler } from './scheduler.js';
+import { startValidatorEngine } from './validator.js';
+import { initMaintenance, stopMaintenance } from './maintenance.js';
+import { startServer } from './frontend/server.js';
+import { initAuth } from './auth.js';
 
 let serverHandle = null;
 
@@ -67,6 +67,7 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 // 处理可能被遗漏的在 Promise 中的错
 process.on('unhandledRejection', (reason, p) => {
   logger.error('[System] ❌ 未捕获的 Promise 异常:', reason, p);
+  console.error('详细堆栈:', reason?.stack || reason);
 });
 
 process.on('uncaughtException', (err) => {

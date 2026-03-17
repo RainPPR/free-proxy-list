@@ -72,7 +72,7 @@ export const statements = {
       0, ?, ?, 0
     ) 
     ON CONFLICT(hash, region) DO UPDATE SET 
-      last_added = ?,
+      last_added = excluded.last_added,
       remark = excluded.remark,
       short_name = excluded.short_name
   `),
@@ -147,9 +147,9 @@ export const statements = {
     ORDER BY 
       sort_group,
       CASE 
-        WHEN sort_group = 1 THEN google_latency  -- 高性能：延迟升序
-        WHEN sort_group = 2 THEN google_latency * -1  -- 可用且速度≥1MB/s：延迟降序（乘-1实现降序）
-        WHEN sort_group = 3 THEN download_speed_bps * -1  -- 可用且速度<1MB/s：速度降序
+        WHEN sort_group = 1 THEN COALESCE(google_latency, 999999)  -- 高性能：延迟升序，NULL放最后
+        WHEN sort_group = 2 THEN COALESCE(google_latency, 0) * -1  -- 可用且速度≥1MB/s：延迟降序
+        WHEN sort_group = 3 THEN COALESCE(download_speed_bps, 0) * -1  -- 可用且速度<1MB/s：速度降序
         ELSE 0 
       END
     LIMIT ? OFFSET ?
@@ -223,7 +223,7 @@ export function searchNodes(filters = {}) {
 
 function getDefaultOrderSql(listType, region) {
   if (listType === 'highperf') {
-    return ` ORDER BY google_latency ASC`;
+    return ` ORDER BY COALESCE(google_latency, 999999) ASC`;
   } else {
     // 默认三级排序规则：
     // 1. 高性能节点在前 (status=2)
@@ -233,9 +233,9 @@ function getDefaultOrderSql(listType, region) {
     return ` ORDER BY 
       status DESC,
       CASE 
-        WHEN status = 2 THEN google_latency
-        WHEN status = 1 AND download_speed_bps >= 1048576 THEN google_latency * -1
-        ELSE download_speed_bps * -1
+        WHEN status = 2 THEN COALESCE(google_latency, 999999)
+        WHEN status = 1 AND download_speed_bps >= 1048576 THEN COALESCE(google_latency, 0) * -1
+        ELSE COALESCE(download_speed_bps, 0) * -1
       END`;
   }
 }

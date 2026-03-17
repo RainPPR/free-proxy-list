@@ -126,7 +126,7 @@ async function runScheduleBatch() {
   if (globalState.isPluginRunning) return;
   globalState.isPluginRunning = true;
 
-  const pluginsConfig = config.plugins.filter(p => p.enabled);
+  const pluginsConfig = plugins.plugins.filter(p => p.enabled);
   logger.info(`[Scheduler] 开始由 ${pluginsConfig.length} 个插件构成的采集轮次...`);
 
   for (const p of pluginsConfig) {

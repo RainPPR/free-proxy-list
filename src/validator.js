@@ -1,6 +1,7 @@
 import { statements } from './db.js';
 import { config, logger, globalState } from './config.js';
 import { testSpeed } from './speedtest.js';
+import net from 'net';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -22,7 +23,7 @@ const processingSet = new Set(); // 正在处理的哈希集合
 // ============= 网络测试工具 =============
 
 /**
- * 基础 TCP Ping - 使用Bun.connect实现
+ * 基础 TCP Ping - 使用Node.js net模块
  */
 async function pingHost(host, port) {
   return new Promise((resolve) => {
@@ -36,39 +37,33 @@ async function pingHost(host, port) {
       }
     }, timeoutMs);
     
-    try {
-      const connection = Bun.connect({
-        hostname: host,
-        port: parseInt(port),
-        socket: {
-          data() {},
-          open(socket) {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeoutId);
-              socket.end();
-              resolve(Date.now() - startTime);
-            }
-          },
-          error(error) {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeoutId);
-              resolve(-1);
-            }
-          },
-          close() {}
-        }
-      });
-      
-      // 如果连接立即失败，catch会处理
-    } catch (error) {
+    const socket = new net.Socket();
+    
+    socket.connect(port, host, () => {
       if (!resolved) {
         resolved = true;
         clearTimeout(timeoutId);
+        socket.destroy();
+        resolve(Date.now() - startTime);
+      }
+    });
+    
+    socket.on('error', () => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeoutId);
+        socket.destroy();
         resolve(-1);
       }
-    }
+    });
+    
+    socket.on('timeout', () => {
+      if (!resolved) {
+        resolved = true;
+        socket.destroy();
+        resolve(-1);
+      }
+    });
   });
 }
 

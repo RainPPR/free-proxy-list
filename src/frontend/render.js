@@ -1,5 +1,5 @@
-import { statements, searchNodes } from '../core/db.js';
-import { config } from '../core/config.js';
+import { statements, searchNodes } from '../db.js';
+import { config } from '../config.js';
 
 /**
  * 服务器端渲染组件
@@ -298,7 +298,30 @@ export function renderFullPage(data = {}) {
 
   function copyLink() {
       const url = window.location.origin + getApiBase() + '/subconverter' + getQueryString(false);
-      navigator.clipboard.writeText(url).then(() => showToast('Link copied'));
+      
+      // 尝试使用Clipboard API，失败则降级到传统方法
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(() => showToast('Link copied')).catch(() => fallbackCopy(url));
+      } else {
+          fallbackCopy(url);
+      }
+  }
+  
+  function fallbackCopy(text) {
+      // 传统降级方案：创建临时元素复制
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+          document.execCommand('copy');
+          showToast('Link copied');
+      } catch (e) {
+          showToast('Copy failed');
+      }
+      document.body.removeChild(textarea);
   }
 
   async function adminOp(type) {
@@ -374,7 +397,7 @@ export async function renderHomepage(region = 'global') {
     const stats = statements.getStats.get(region, region, region, region) || {};
     
     // 获取节点数据（第一页，100条）
-    const nodes = statements.getAvailableNodesForSub.all(region, 100, 0) || [];
+    const nodes = statements.getAvailableNodesForSub.all(region, region, region, 100, 0) || [];
     
     return renderFullPage({
       stats,

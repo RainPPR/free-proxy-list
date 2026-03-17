@@ -18,7 +18,6 @@
 **问题**: 使用了不存在的Bun API
 
 **原始代码**:
-
 ```javascript
 const dbDir = Bun.dirname(config.app.dbPath);
 if (!Bun.exists(dbDir)) {
@@ -27,7 +26,6 @@ if (!Bun.exists(dbDir)) {
 ```
 
 **修复后**:
-
 ```javascript
 import { dirname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
@@ -47,13 +45,11 @@ if (!existsSync(dbDir)) {
 **问题1**: `Bun.resolveSync` 对不存在的路径会抛出错误
 
 **原始代码**:
-
 ```javascript
 const ADMIN_CREDS_PATH = Bun.resolveSync('./data/admin_creds.txt', import.meta.dir);
 ```
 
 **修复后**:
-
 ```javascript
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -67,14 +63,12 @@ const ADMIN_CREDS_PATH = resolve(__dirname, '../data/admin_creds.txt');
 **问题2**: `crypto.randomBytes` 在Bun中不存在
 
 **原始代码**:
-
 ```javascript
 const newUuid = crypto.randomUUID();
 const newToken = crypto.randomBytes(16).toString('hex');
 ```
 
 **修复后**:
-
 ```javascript
 const newUuid = crypto.randomUUID();
 const array = new Uint8Array(16);
@@ -87,13 +81,11 @@ const newToken = Array.from(array).map(b => b.toString(16).padStart(2, '0')).joi
 **问题3**: `Bun.write` API使用方式
 
 **原始代码**:
-
 ```javascript
 await Bun.write(ADMIN_CREDS_PATH, content);
 ```
 
 **修复后**:
-
 ```javascript
 const file = Bun.file(ADMIN_CREDS_PATH);
 await file.write(content);
@@ -124,20 +116,17 @@ try {
 
 ### 1. 未处理的Promise异常 ⚠️
 
-**现象**:
-
+**现象**: 
 - 应用启动后显示 `[ERROR] [System] ❌ 未捕获的 Promise 异常: {} {}`
 - 发生在 "Dispatcher Starting..." 之后
-- Web服务器已成功运行在 <http://localhost:8080>
+- Web服务器已成功运行在 http://localhost:8080
 
 **可能的原因** (需要进一步排查):
-
 1. `core/validator.js` 中的 `Bun.connect()` 调用
 2. `core/scheduler.js` 中的 `Bun.CryptoHasher` 使用
 3. Dispatcher启动时的异步操作未正确处理
 
 **建议排查步骤**:
-
 1. 在 `core/validator.js` 的 `pingHost` 函数中添加更多日志
 2. 检查 `Bun.connect()` 是否需要 `data` 回调
 3. 检查 scheduler.js 的定时任务是否有未处理的Promise
@@ -148,8 +137,7 @@ try {
 
 **现象**: 访问 `http://localhost:8080/api/proxies` 返回 "Not Found"
 
-**可能原因**:
-
+**可能原因**: 
 - 路由定义问题
 - 服务器初始化问题
 
@@ -255,7 +243,6 @@ bun -e "console.log('API:', typeof Bun.someApi)"
 ## 七、关键代码片段参考
 
 ### 正确的Bun文件操作
-
 ```javascript
 // 读取文件
 const file = Bun.file(path);
@@ -271,7 +258,6 @@ if (await file.exists()) { ... }
 ```
 
 ### 正确的路径解析
-
 ```javascript
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -281,7 +267,6 @@ const absolutePath = resolve(__dirname, relativePath);
 ```
 
 ### 正确的随机数生成
-
 ```javascript
 // UUID
 const uuid = crypto.randomUUID();
@@ -289,4 +274,10 @@ const uuid = crypto.randomUUID();
 // 随机字节
 const bytes = new Uint8Array(16);
 crypto.getRandomValues(bytes);
-……
+const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+```
+
+---
+
+*报告更新时间: 2026-03-15 13:27*
+*状态: 核心迁移工作进行中，部分问题已修复*

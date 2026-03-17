@@ -1,7 +1,7 @@
 import { serve } from "bun";
-import { statements, searchNodes } from '../core/db.js';
-import { config, logger } from '../core/config.js';
-import { verifyAuth, resetAdminCreds } from '../core/auth.js';
+import { statements, searchNodes } from '../db.js';
+import { config, logger } from '../config.js';
+import { verifyAuth, resetAdminCreds } from '../auth.js';
 import { renderHomepage } from './render.js';
 
 // 辅助函数
