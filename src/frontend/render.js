@@ -6,8 +6,14 @@ import { config } from '../config.js';
  * 提供类似Next.js的服务端渲染功能
  */
 
-// 读取CSS文件内容
-const CSS_CONTENT = await Bun.file('./server/styles.css').text();
+// 读取CSS文件内容 - 使用 fs 同步读取以兼容打包环境
+const fs = require('fs');
+let CSS_CONTENT = '';
+try {
+  CSS_CONTENT = fs.readFileSync('./styles.css', 'utf-8');
+} catch (e) {
+  console.error('Failed to load CSS:', e);
+}
 
 /**
  * 生成完整的HTML页面

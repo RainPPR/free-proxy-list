@@ -3,7 +3,7 @@ import { closeDb, reclassifyHighPerformanceNodes } from './db.js';
 import { initScheduler, stopScheduler } from './scheduler.js';
 import { startValidatorEngine } from './validator.js';
 import { initMaintenance, stopMaintenance } from './maintenance.js';
-import { startServer } from './frontend/server.js';
+import { startServer } from './server.js';
 import { initAuth } from './auth.js';
 
 let serverHandle = null;

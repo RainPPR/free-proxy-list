@@ -1,62 +1,38 @@
 # syntax=docker/dockerfile:1
 
-# 阶段 1：构建阶段
-FROM node:24-trixie-slim AS builder
+# 使用 Bun 镜像
+FROM oven/bun:1-debian AS builder
 
-ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        python3 make g++ curl
+# 复制依赖文件
+COPY package.json bun.lockb* ./
 
-COPY package.json package-lock.json* ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+# 安装依赖（使用 bun install）
+RUN bun install --frozen-lockfile
 
+# 复制源代码
 COPY . .
-RUN npm run build
 
-# 阶段 2：运行阶段
-FROM node:24-trixie-slim
+# 构建应用（生成 bytecode + compile 可执行文件）
+RUN bun run build.js exe
+
+# 运行阶段
+FROM oven/bun:1-debian
 
 ENV NODE_ENV=production \
     PORT=8080 \
-    DEBIAN_FRONTEND=noninteractive \
     TMPDIR=/app/data/temp
 
 WORKDIR /app
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        tini curl python3 && \
-    rm -rf /var/lib/apt/lists/*
+# 复制构建产物（可执行文件和静态资源）
+COPY --from=builder /app/dist /app
 
-# 生产环境仅需 dist/bundle.cjs (内含所有插件逻辑)
-COPY --from=builder /app/dist/bundle.cjs /app/dist/bundle.cjs
-COPY --from=builder /app/dist/better_sqlite3.node /app/dist/better_sqlite3.node
-
-
-# 仍然需要这些基础底层 Addon 支撑结构
-COPY --from=builder /app/node_modules/better-sqlite3 /app/node_modules/better-sqlite3
-COPY --from=builder /app/node_modules/bindings /app/node_modules/bindings
-COPY --from=builder /app/node_modules/file-uri-to-path /app/node_modules/file-uri-to-path
-
-# 其它静态资源与配置
-COPY --from=builder /app/config.yml /app/config.yml
-COPY --from=builder /app/public /app/public
-
+# 创建数据目录
 RUN mkdir -p /app/data
 
 EXPOSE 8080
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", \
-     "--max-old-space-size=768", \
-     "--max-semi-space-size=16", \
-     "--optimize-for-size", \
-     "--gc-interval=500", \
-     "dist/bundle.cjs"]
+
+# 直接运行编译后的可执行文件
+CMD ["./index"]

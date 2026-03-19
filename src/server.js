@@ -1,8 +1,8 @@
 import { serve } from "bun";
-import { statements, searchNodes } from '../db.js';
-import { config, logger } from '../config.js';
-import { verifyAuth, resetAdminCreds } from '../auth.js';
-import { renderHomepage } from './render.js';
+import { statements, searchNodes } from './db.js';
+import { config, logger } from './config.js';
+import { verifyAuth, resetAdminCreds } from './auth.js';
+import { renderHomepage } from './frontend/render.js';
 
 // 辅助函数
 function nodeName(n) {

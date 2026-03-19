@@ -1,75 +1,158 @@
 /**
- * 前端构建脚本
- * 使用 Bun 的内置打包工具
+ * 构建脚本
+ * 使用 Bun 的内置打包工具生成可执行文件
+ * 
+ * 支持:
+ * - bytecode: 字节码编译（加速启动）
+ * - compile: 生成独立可执行文件
  */
 
-import { build } from 'bun';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const frontendDir = resolve(__dirname, 'src/frontend');
+const srcDir = resolve(__dirname, 'src');
 const outputDir = resolve(__dirname, 'dist');
 
 /**
- * 前端构建配置
+ * 确保目录存在
  */
-const frontendBuildConfig = {
-  entrypoints: [resolve(frontendDir, 'index.jsx')],
-  outdir: outputDir,
-  minify: process.env.NODE_ENV === 'production',
-  splitting: false,
-  sourcemap: process.env.NODE_ENV !== 'production',
-  target: 'browser',
-  format: 'esm',
-};
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
 
 /**
  * 复制静态文件
  */
-async function copyStaticFiles() {
-  const fs = await import('fs');
+function copyStaticFiles() {
+  ensureDir(outputDir);
   
-  // 确保输出目录存在
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-  
-  // 复制 public 目录下的文件
-  const publicDir = resolve(frontendDir, 'public');
-  if (fs.existsSync(publicDir)) {
-    const files = fs.readdirSync(publicDir);
-    for (const file of files) {
-      const src = resolve(publicDir, file);
-      const dest = resolve(outputDir, file);
-      fs.copyFileSync(src, dest);
-      console.log(`Copied: ${file}`);
-    }
-  }
-  
-  // 复制 index.html
-  const htmlSrc = resolve(frontendDir, 'index.html');
+  // 复制 index.html (从 src/frontend)
+  const htmlSrc = resolve(__dirname, 'src/frontend/index.html');
   const htmlDest = resolve(outputDir, 'index.html');
   if (fs.existsSync(htmlSrc)) {
     fs.copyFileSync(htmlSrc, htmlDest);
     console.log('Copied: index.html');
   }
+  
+  // 复制 styles.css (从 src/frontend)
+  const cssSrc = resolve(__dirname, 'src/frontend/styles.css');
+  const cssDest = resolve(outputDir, 'styles.css');
+  if (fs.existsSync(cssSrc)) {
+    fs.copyFileSync(cssSrc, cssDest);
+    console.log('Copied: styles.css');
+  }
+  
+  // 复制 public 目录
+  const publicSrc = resolve(__dirname, 'public');
+  const publicDest = resolve(outputDir, 'public');
+  if (fs.existsSync(publicSrc)) {
+    ensureDir(publicDest);
+    const files = fs.readdirSync(publicSrc);
+    for (const file of files) {
+      const src = resolve(publicSrc, file);
+      const dest = resolve(publicDest, file);
+      if (fs.statSync(src).isFile()) {
+        fs.copyFileSync(src, dest);
+        console.log(`Copied: public/${file}`);
+      }
+    }
+  }
 }
 
 /**
- * 构建前端
+ * 复制配置文件
  */
-async function buildFrontend() {
-  console.log('Building frontend...');
+function copyConfig() {
+  const configSrc = resolve(__dirname, 'config.toml');
+  const configDest = resolve(outputDir, 'config.toml');
+  if (fs.existsSync(configSrc)) {
+    fs.copyFileSync(configSrc, configDest);
+    console.log('Copied: config.toml');
+  }
+}
+
+/**
+ * 构建可执行文件（字节码 + 编译为独立可执行文件）
+ * 使用 CLI 命令方式确保正确生成 .exe 文件
+ */
+async function buildExecutable() {
+  console.log('Building executable with bytecode + compile...');
+  
+  ensureDir(outputDir);
+  
+  const entryPoint = resolve(srcDir, 'index.js');
+  const outFile = resolve(outputDir, 'index');
+  
+  // 构建命令参数
+  const args = [
+    'build',
+    entryPoint,
+    '--compile',
+    '--outfile', outFile,
+  ];
+  
+  // 添加字节码选项
+  args.push('--bytecode');
+  
+  // 根据环境添加其他选项
+  if (process.env.NODE_ENV === 'production') {
+    args.push('--minify');
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    args.push('--sourcemap');
+  }
   
   try {
-    // 使用 Bun 构建
-    const result = await build(frontendBuildConfig);
+    const proc = Bun.spawn(['bun', ...args], {
+      cwd: __dirname,
+      stdout: 'inherit',
+      stderr: 'inherit',
+    });
+    
+    const exitCode = await proc.exited;
+    
+    if (exitCode === 0) {
+      console.log('✅ Executable build successful');
+    } else {
+      console.error(`❌ Build failed with exit code: ${exitCode}`);
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error('Build error:', error);
+    process.exit(1);
+  }
+}
+
+/**
+ * 构建 CommonJS 字节码版本（不编译为可执行文件）
+ */
+async function buildBytecode() {
+  console.log('Building with CommonJS bytecode...');
+  
+  ensureDir(outputDir);
+  
+  const buildConfig = {
+    entrypoints: [resolve(srcDir, 'index.js')],
+    outdir: outputDir,
+    target: 'bun',
+    // 使用 CJS 格式可以不需要 compile 就能生成字节码
+    format: 'cjs',
+    bytecode: true,
+    minify: process.env.NODE_ENV === 'production',
+    sourcemap: process.env.NODE_ENV !== 'production',
+  };
+  
+  try {
+    const result = await Bun.build(buildConfig);
     
     if (result.success) {
-      console.log('✅ Frontend build successful');
+      console.log('✅ Bytecode build successful');
     } else {
-      console.error('❌ Frontend build failed:');
+      console.error('❌ Build failed:');
       result.logs.forEach(log => console.error(log));
       process.exit(1);
     }
@@ -77,41 +160,43 @@ async function buildFrontend() {
     console.error('Build error:', error);
     process.exit(1);
   }
-  
-  // 复制静态文件
-  await copyStaticFiles();
-  
-  console.log('✅ Build complete!');
 }
 
 /**
- * 开发模式 - 监视文件变化
+ * 主入口
  */
-async function devMode() {
-  console.log('Starting dev mode...');
+async function main() {
+  const args = process.argv.slice(2);
+  const command = args[0] || 'build';
   
-  // 初始构建
-  await buildFrontend();
+  console.log(`Running command: ${command}`);
   
-  // 监视文件变化
-  const watcher = Bun.watch(frontendDir, (event, file) => {
-    console.log(`File changed: ${file}`);
-    buildFrontend();
-  });
-  
-  console.log('Watching for changes...');
+  switch (command) {
+    case 'build':
+      // 默认构建 CJS 字节码版本
+      await buildBytecode();
+      copyStaticFiles();
+      copyConfig();
+      console.log('✅ Build complete!');
+      break;
+      
+    case 'exe':
+    case 'executable':
+      // 构建独立可执行文件（ESM + 字节码 + 编译）
+      await buildExecutable();
+      copyStaticFiles();
+      copyConfig();
+      console.log('✅ Executable build complete!');
+      break;
+      
+    case 'dev':
+      console.log('Dev mode: use "bun run src/index.js" instead');
+      break;
+      
+    default:
+      console.log(`Unknown command: ${command}`);
+      console.log('Available commands: build, exe, dev');
+  }
 }
 
-// 主入口
-const args = process.argv.slice(2);
-const command = args[0] || 'build';
-
-switch (command) {
-  case 'dev':
-    devMode();
-    break;
-  case 'build':
-  default:
-    buildFrontend();
-    break;
-}
+main();

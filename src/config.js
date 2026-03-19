@@ -2,11 +2,18 @@
 
 let rawConfig = {};
 
-// 尝试读取 TOML 配置（异步方式）
+// 尝试读取 TOML 配置
+// 使用 process.cwd() 确保无论从哪里运行都能找到配置文件
 try {
-  const configPath = Bun.resolveSync('../config.toml', import.meta.dir);
-  const configFile = Bun.file(configPath);
-  const configText = await configFile.text();
+  const configPath = './config.toml';
+  
+  // 使用 fs 同步读取文件（兼容打包后的环境）
+  const fs = require('fs');
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`Config file not found: ${configPath}`);
+  }
+  
+  const configText = fs.readFileSync(configPath, 'utf-8');
   rawConfig = Bun.TOML.parse(configText);
 } catch (e) {
   console.error('[Config] ❌ Critical Error:', e.message);

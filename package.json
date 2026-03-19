@@ -5,8 +5,9 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "bun src/index.js",
-    "dev": "bun --watch src/index.js"
+    "start": "bun run src/index.js",
+    "dev": "bun --watch src/index.js",
+    "build": "bun run build.js"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

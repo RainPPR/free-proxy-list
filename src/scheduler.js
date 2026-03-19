@@ -1,4 +1,4 @@
-import plugins from '../plugins/plugins.js';
+import plugins from './plugins/plugins.js';
 import { config, logger, globalState } from './config.js';
 import { statements } from './db.js';
 
