@@ -1,4 +1,4 @@
-import { fetchText } from '../../utils/fetch-utils.js';
+import { fetchJson } from '../../utils/fetch-utils.js';
 
 /**
  * vakhov-cn 插件
@@ -9,7 +9,7 @@ export default async function fetch() {
   const url = 'https://raw.githubusercontent.com/vakhov/fresh-proxy-list/refs/heads/master/proxylist.json';
   
   try {
-    const text = await fetchText(url, { responseType: 'json', timeout: 30000 });
+    const text = await fetchJson(url, { timeout: 30000 });
     const data = text;
     const proxies = [];
 

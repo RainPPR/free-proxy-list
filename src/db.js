@@ -63,6 +63,7 @@ export const statements = {
   purgeOldDeletedLogs: db.query(`DELETE FROM deleted_logs WHERE deleted_at < ?`),
 
   // ----------- 代理增删改查 -----------
+  checkProxyExists: db.query(`SELECT hash FROM proxies WHERE hash = ? AND region = ?`),
   insertOrUpdateReadyProxy: db.query(`
     INSERT INTO proxies (
       hash, protocol, ip, port, short_name, long_name, remark, region,
@@ -128,30 +129,11 @@ export const statements = {
       (SELECT COUNT(*) FROM deleted_logs WHERE region = ?) as deletedLogsCount
   `),
 
-  // 订阅/显示排序（按用户要求的规则，使用 UNION ALL 正确实现三级排序）：
+  // 订阅/显示排序：默认按速度降序
   getAvailableNodesForSub: db.query(`
-    SELECT * FROM (
-      -- 第一组：高性能节点 (status=2) 按 Google 延迟升序
-      SELECT *, 1 as sort_group FROM proxies WHERE status = 2 AND region = ?
-      
-      UNION ALL
-      
-      -- 第二组：可用节点且速度≥1MB/s 按延迟降序
-      SELECT *, 2 as sort_group FROM proxies WHERE status = 1 AND download_speed_bps >= 1048576 AND region = ?
-      
-      UNION ALL
-      
-      -- 第三组：可用节点且速度<1MB/s 按速度降序
-      SELECT *, 3 as sort_group FROM proxies WHERE status = 1 AND download_speed_bps < 1048576 AND region = ?
-    )
-    ORDER BY 
-      sort_group,
-      CASE 
-        WHEN sort_group = 1 THEN COALESCE(google_latency, 999999)  -- 高性能：延迟升序，NULL放最后
-        WHEN sort_group = 2 THEN COALESCE(google_latency, 0) * -1  -- 可用且速度≥1MB/s：延迟降序
-        WHEN sort_group = 3 THEN COALESCE(download_speed_bps, 0) * -1  -- 可用且速度<1MB/s：速度降序
-        ELSE 0 
-      END
+    SELECT * FROM proxies
+    WHERE status IN (1, 2) AND region = ?
+    ORDER BY COALESCE(download_speed_bps, 0) DESC
     LIMIT ? OFFSET ?
   `),
 
@@ -222,22 +204,8 @@ export function searchNodes(filters = {}) {
 }
 
 function getDefaultOrderSql(listType, region) {
-  if (listType === 'highperf') {
-    return ` ORDER BY COALESCE(google_latency, 999999) ASC`;
-  } else {
-    // 默认三级排序规则：
-    // 1. 高性能节点在前 (status=2)
-    // 2. 高性能节点按 Google 延迟升序
-    // 3. 可用节点中速度>=1MB/s的按延迟降序
-    // 4. 可用节点中速度<1MB/s的按速度降序
-    return ` ORDER BY 
-      status DESC,
-      CASE 
-        WHEN status = 2 THEN COALESCE(google_latency, 999999)
-        WHEN status = 1 AND download_speed_bps >= 1048576 THEN COALESCE(google_latency, 0) * -1
-        ELSE COALESCE(download_speed_bps, 0) * -1
-      END`;
-  }
+  // 默认按速度降序
+  return ` ORDER BY COALESCE(download_speed_bps, 0) DESC`;
 }
 
 /**

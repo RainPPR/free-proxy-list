@@ -1,4 +1,4 @@
-import { fetchText } from '../../utils/fetch-utils.js';
+import { fetchJson } from '../../utils/fetch-utils.js';
 
 /**
  * geonode-cn 插件
@@ -16,8 +16,8 @@ import { fetchText } from '../../utils/fetch-utils.js';
 async function fetchPage(page) {
   const url = `https://proxylist.geonode.com/api/proxy-list?limit=500&page=${page}&sort_by=lastChecked&sort_type=desc`;
   try {
-    const text = await fetchText(url, { timeout: 30000 });
-    return text;
+    const data = await fetchJson(url, { timeout: 30000 });
+    return data;
   } catch (err) {
     return null;
   }
@@ -43,7 +43,7 @@ export default async function fetch() {
 
     // 2. 抓取分表数据 (限制 50 页)
     if (maxPage > 1) {
-      const actualMaxPage = Math.min(maxPage, 50);
+      const actualMaxPage = maxPage;
       const promises = [];
       for (let p = 2; p <= actualMaxPage; p++) {
         promises.push(fetchPage(p));

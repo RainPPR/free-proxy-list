@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Free Proxy Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- INJECT_CSS -->
+</head>
+<body>
+  <div class="glass-bg"></div>
+  <div class="container">
+    <header class="glass-panel">
+      <div class="header-left">
+        <h1 id="main-title">Global Proxy Portal</h1>
+        <div class="region-switcher">
+          <button class="btn btn-pill active" data-region="global">Global</button>
+          <button class="btn btn-pill" data-region="cn">China</button>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-primary" id="btn-refresh">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.92-12.28l5.07 5.07"/></svg>
+          Refresh
+        </button>
+      </div>
+    </header>
+
+    <div class="stats-grid" id="stats-container">
+      <div class="stat-card glass-panel">
+        <div class="stat-title">Ready (Waiting)</div>
+        <div class="stat-value" id="s-ready">-</div>
+      </div>
+      <div class="stat-card glass-panel">
+        <div class="stat-title">Available 🟢</div>
+        <div class="stat-value text-success" id="s-avail">-</div>
+      </div>
+      <div class="stat-card glass-panel">
+        <div class="stat-title">High-Perf 🚀</div>
+        <div class="stat-value text-accent" id="s-perf">-</div>
+      </div>
+      <div class="stat-card glass-panel">
+        <div class="stat-title">Purged 🗑️</div>
+        <div class="stat-value text-muted" id="s-del">-</div>
+      </div>
+    </div>
+
+    <div class="toolbar glass-panel">
+      <div class="field">
+        <label>Country Code</label>
+        <input type="text" id="f-country" placeholder="e.g. US, HK, JP">
+      </div>
+      <div class="field">
+        <label>Protocol</label>
+        <div class="select-wrapper">
+          <select id="f-type">
+            <option value="">ALL PROTOCOLS</option>
+            <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
+            <option value="socks4">SOCKS4</option>
+            <option value="socks5">SOCKS5</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Min Speed</label>
+        <input type="number" id="f-speed" placeholder="KB/s">
+      </div>
+      <div class="field">
+        <label>Max Delay</label>
+        <input type="number" id="f-delay" placeholder="ms">
+      </div>
+      <div class="field">
+        <label>Format</label>
+        <div class="select-wrapper">
+          <select id="f-format">
+            <option value="base64">Base64</option>
+            <option value="clash">Clash Proxy</option>
+            <option value="v2ray">V2Ray URL</option>
+            <option value="clash-provider">Clash Provider</option>
+            <option value="raw">Raw Array</option>
+          </select>
+        </div>
+      </div>
+      <div class="field action-field">
+        <label>&nbsp;</label>
+        <button class="btn btn-secondary" id="btn-copy">Copy Subscription</button>
+      </div>
+    </div>
+
+    <div class="table-container glass-panel">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="ip">Endpoint</th>
+            <th data-sort="protocol">Type</th>
+            <th data-sort="short_name">Location</th>
+            <th data-sort="download_speed_bps">Speed</th>
+            <th data-sort="google_latency">Latency</th>
+            <th data-sort="msft_latency">MSFT</th>
+            <th data-sort="hicmatch_latency">HICMATCH</th>
+            <th data-sort="last_checked">Checked</th>
+          </tr>
+        </thead>
+        <tbody id="node-list">
+          <!-- Rendered by JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination glass-panel">
+      <button class="btn btn-icon" id="btn-prev"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="page-controls">
+        <span>Page</span>
+        <input type="number" id="f-page" value="1" min="1">
+        <span>of</span>
+        <div class="select-wrapper limit-select">
+          <select id="f-limit">
+            <option value="20">20 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100" selected>100 / page</option>
+            <option value="200">200 / page</option>
+            <option value="500">500 / page</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-icon" id="btn-next"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+    </div>
+
+    <div class="admin-section glass-panel">
+      <div class="admin-header">
+        <h2>System Controls</h2>
+        <span class="badge">Admin Only</span>
+      </div>
+      <div class="admin-fields">
+        <div class="field">
+            <label>Master UUID</label>
+            <input type="text" id="a-uuid" placeholder="Enter UUID">
+        </div>
+        <div class="field">
+            <label>Session Token</label>
+            <input type="password" id="a-token" placeholder="Enter Token">
+        </div>
+        <div class="admin-actions">
+          <button class="btn btn-danger" id="btn-clear">Clear Data</button>
+          <button class="btn btn-warning" id="btn-reset">Reset Creds</button>
+          <button class="btn btn-primary" id="btn-test">Test Plugins</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- INJECT_SERVER_DATA -->
+  <!-- INJECT_JS -->
+</body>
+</html>

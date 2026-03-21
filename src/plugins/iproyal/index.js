@@ -1,4 +1,4 @@
-import { fetchText } from '../../utils/fetch-utils.js';
+import { fetchJson } from '../../utils/fetch-utils.js';
 
 /**
  * iproyal 插件
@@ -29,8 +29,8 @@ const COMMON_HEADERS = {
 async function fetchPage(page) {
   const url = `https://cms.iproyal.com/api/free-proxy-records?fields[0]=ip&fields[1]=port&fields[2]=protocol&fields[3]=country&fields[4]=city&pagination[page]=${page}&pagination[pageSize]=1000`;
   try {
-    const text = await fetchText(url, { headers: COMMON_HEADERS, timeout: 30000 });
-    return text;
+    const data = await fetchJson(url, { headers: COMMON_HEADERS, timeout: 30000 });
+    return data;
   } catch (err) {
     return null;
   }
@@ -54,7 +54,7 @@ export default async function fetch() {
 
     // 2. 抓取分表 (限制最大 50 页)
     if (pageCount > 1) {
-      const actualMaxPage = Math.min(pageCount, 50);
+      const actualMaxPage = pageCount;
       const promises = [];
       for (let p = 2; p <= actualMaxPage; p++) {
         promises.push(fetchPage(p));

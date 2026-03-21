@@ -1,4 +1,4 @@
-import { fetchText } from '../../utils/fetch-utils.js';
+import { fetchJson } from '../../utils/fetch-utils.js';
 
 /**
  * jetkai 插件 (全球版)
@@ -9,7 +9,7 @@ export default async function fetch() {
   const url = 'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/json/proxies-advanced.json';
   
   try {
-    const text = await fetchText(url, { responseType: 'json', timeout: 30000 });
+    const text = await fetchJson(url, { timeout: 30000 });
     const data = text;
     const proxies = [];
 

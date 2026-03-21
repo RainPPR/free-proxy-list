@@ -1,7 +1,8 @@
 import { serve } from "bun";
 import { statements, searchNodes } from './db.js';
-import { config, logger } from './config.js';
+import { config, logger, globalState } from './config.js';
 import { verifyAuth, resetAdminCreds } from './auth.js';
+import { runScheduleBatch } from './scheduler.js';
 import { renderHomepage } from './frontend/render.js';
 
 // 辅助函数
@@ -132,6 +133,19 @@ async function handleAdmin(request, action) {
       statements.clearDeletedLogs.run();
     } else if (action === 'reset-creds') {
       resetAdminCreds();
+    } else if (action === 'test-plugins') {
+      globalState.enginePaused = true;
+      logger.info('\\n==============================================');
+      logger.info('[API] 🚨 收到测试请求，已挂起所有的 Validator 测速引擎队列！');
+      logger.info('[API] 🚀 正在执行 Plugins 单侧全量爬取...');
+      logger.info('==============================================\\n');
+      
+      runScheduleBatch().then(() => {
+        logger.info('\\n[API] ✅ Plugins 测试执行全部结束。请自行观察日志。');
+      }).catch(err => {
+        logger.error(`[API] ❌ 插件测试遇到错误：${err.message}`);
+      });
+      return Response.json({ success: true, message: "Engine paused. Plugin tests triggered in background." });
     }
     
     return Response.json({ success: true });

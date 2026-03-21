@@ -179,9 +179,9 @@ async function speedtestProxy(proxyObj) {
   const bps = await testSpeed(ip, port, protocol, strategy.speedtestUrl);
   if (bps > 0) {
     statements.updateProxySpeed.run(Date.now(), bps, bps, config.runtime.highPerformanceMinBps, bps, config.runtime.highPerformanceMinBps, hash, region);
-    if (bps >= highPerformanceMinBps) {
-      logger.info(`[SpeedTest] 🚀 [${region.toUpperCase()}] HighPerf! ${ip}:${port} ${(bps / 1024 / 1024).toFixed(2)} MB/s`);
-    }
+    const speedMB = (bps / 1024 / 1024).toFixed(2);
+    const isHighPerf = bps >= highPerformanceMinBps;
+    logger.info(`[SpeedTest] ✅ [${region.toUpperCase()}] ${ip}:${port} ${speedMB} MB/s${isHighPerf ? ' [HighPerf]' : ''}`);
   }
 }
 
@@ -248,6 +248,10 @@ async function dispatcherLoop() {
   logger.info(`[Dispatcher] Starting...`);
   while (true) {
     try {
+      if (globalState.enginePaused) {
+        await delay(5000);
+        continue;
+      }
       if (validationQueue.length < validationConcurrency) {
         const added = fillValidationQueue();
         if (added === 0 && validationQueue.length === 0) {
@@ -268,6 +272,13 @@ async function dispatcherLoop() {
 export async function startValidatorEngine() {
   logger.info(`[Engine] Running (P-Set: ${validationConcurrency}V / ${speedtestConcurrency}S)`);
   
+  // 定期执行全量 GC，防止在大批量测试时内存积压
+  setInterval(() => {
+    if (typeof Bun !== 'undefined' && Bun.gc) {
+      Bun.gc(true);
+    }
+  }, 120000); // 每 2 分钟回收一次
+
   const workers = [dispatcherLoop()];
   for (let i = 0; i < validationConcurrency; i++) workers.push(validationWorker(i));
   for (let i = 0; i < speedtestConcurrency; i++) workers.push(speedtestWorker(i));

@@ -35,6 +35,8 @@ import vakhov_cn from './vakhov/cn.js';
 import vakhov_global from './vakhov/index.js';
 import zaeem20 from './zaeem20/index.js';
 
+import proxypool from './proxypool/index.js';
+
 export default {
   plugins: [
     // 1. clarketm (global only)
@@ -95,7 +97,9 @@ export default {
     { name: "vakhov", region: "global", enabled: true, fn: vakhov_global },
     { name: "vakhov", region: "cn", enabled: true, fn: vakhov_cn },
     // 23. zaeem20 (global only)
-    { name: "zaeem20", region: "global", enabled: true, fn: zaeem20 }
+    { name: "zaeem20", region: "global", enabled: true, fn: zaeem20 },
+    // 24. proxypool (独立后台采集服务组件)
+    { name: "proxypool", region: "global", enabled: true, fn: proxypool }
     // 注: highperf 特殊插件仅在需要额外高性能源时手动开启
   ]
 };

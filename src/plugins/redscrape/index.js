@@ -1,4 +1,4 @@
-import { fetchText } from '../../utils/fetch-utils.js';
+import { fetchJson } from '../../utils/fetch-utils.js';
 
 /**
  * redscrape 插件
@@ -9,7 +9,7 @@ export default async function fetch() {
   const url = 'https://free.redscrape.com/api/proxies?format=json';
   
   try {
-    const text = await fetchText(url, { responseType: 'json', timeout: 20000 });
+    const text = await fetchJson(url, { timeout: 20000 });
     const data = text;
     const proxies = [];
 

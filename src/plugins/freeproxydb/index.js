@@ -1,4 +1,4 @@
-import { fetchText } from '../../utils/fetch-utils.js';
+import { fetchJson } from '../../utils/fetch-utils.js';
 
 /**
  * freeproxydb 插件 (全球版)
@@ -19,8 +19,8 @@ const BASE_URL = `https://freeproxydb.com/api/proxy/search?country=&protocol=soc
 async function fetchPage(pageIndex) {
   const url = `${BASE_URL}&page_index=${pageIndex}`;
   try {
-    const text = await fetchText(url, { timeout: 20000 });
-    return text;
+    const data = await fetchJson(url, { timeout: 20000 });
+    return data;
   } catch (err) {
     return null;
   }
@@ -47,7 +47,7 @@ export default async function fetch() {
 
     // 2. 抓取后续页面
     if (pageCount > 1) {
-      const maxPages = Math.min(pageCount, 50); // 防护性限制：最多抓取 50 页
+      const maxPages = pageCount;
       const promises = [];
       for (let p = 2; p <= maxPages; p++) {
         promises.push(fetchPage(p));

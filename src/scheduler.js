@@ -87,6 +87,7 @@ async function runPlugin(plugin) {
     sortProxiesByPriority(proxies);
 
     let addedCount = 0;
+    let newCount = 0;
     const now = Date.now();
 
     for (const p of proxies) {
@@ -97,6 +98,10 @@ async function runPlugin(plugin) {
       // 检查黑名单 (24小时内标记废弃的)
       const isBlacklisted = statements.isDeleted.get(hash, region);
       if (isBlacklisted) continue;
+
+      // 检查是否全新节点
+      const existing = statements.checkProxyExists.get(hash, region);
+      if (!existing) newCount++;
 
       statements.insertOrUpdateReadyProxy.run(
         hash,
@@ -113,7 +118,7 @@ async function runPlugin(plugin) {
       addedCount++;
     }
 
-    logger.info(`[Scheduler] ✅ ${pluginName} 完成。入库: ${addedCount}`);
+    logger.info(`[Scheduler] ✅ ${pluginName} 完成。抓取总数: ${proxies.length}, 实际新增: ${newCount}, (更新/入库动作总量: ${addedCount})`);
   } catch (err) {
     logger.error(`[Scheduler] ❌ 插件 ${pluginName} 运行崩溃: ${err.message}`);
   }
@@ -122,7 +127,7 @@ async function runPlugin(plugin) {
 /**
  * 执行所有已启用插件的一个轮次
  */
-async function runScheduleBatch() {
+export async function runScheduleBatch() {
   if (globalState.isPluginRunning) return;
   globalState.isPluginRunning = true;
 
@@ -131,8 +136,12 @@ async function runScheduleBatch() {
 
   for (const p of pluginsConfig) {
     await runPlugin(p);
-    // 每个插件执行完后微休眠，给验证引擎留点资源，也让 GC 有机会工作
-    await new Promise(r => setTimeout(r, 2000));
+    // 显式触发完整 GC 减少内存积累
+    if (typeof Bun !== 'undefined' && Bun.gc) {
+      Bun.gc(true);
+    }
+    // 每个插件执行完后微休眠，给验证引擎留点资源
+    await new Promise(r => setTimeout(r, 1000));
   }
 
   globalState.isPluginRunning = false;

@@ -1,4 +1,4 @@
-import { fetchText } from '../../utils/fetch-utils.js';
+import { fetchJson } from '../../utils/fetch-utils.js';
 
 /**
  * LoneKingCode-cn 插件
@@ -7,7 +7,7 @@ import { fetchText } from '../../utils/fetch-utils.js';
 
 async function fetchFromEndpoint(url) {
   try {
-    const text = await fetchText(url, { responseType: 'json', timeout: 20000 });
+    const text = await fetchJson(url, { timeout: 20000 });
     const data = text;
     const proxies = [];
 

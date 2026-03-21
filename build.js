@@ -30,20 +30,15 @@ function ensureDir(dir) {
 function copyStaticFiles() {
   ensureDir(outputDir);
   
-  // 复制 index.html (从 src/frontend)
-  const htmlSrc = resolve(__dirname, 'src/frontend/index.html');
-  const htmlDest = resolve(outputDir, 'index.html');
-  if (fs.existsSync(htmlSrc)) {
-    fs.copyFileSync(htmlSrc, htmlDest);
-    console.log('Copied: index.html');
-  }
-  
-  // 复制 styles.css (从 src/frontend)
-  const cssSrc = resolve(__dirname, 'src/frontend/styles.css');
-  const cssDest = resolve(outputDir, 'styles.css');
-  if (fs.existsSync(cssSrc)) {
-    fs.copyFileSync(cssSrc, cssDest);
-    console.log('Copied: styles.css');
+  // 复制 frontend 核心资产
+  const frontendAssets = ['template.html', 'styles.css', 'app.js'];
+  for (const file of frontendAssets) {
+    const src = resolve(__dirname, 'src/frontend', file);
+    const dest = resolve(outputDir, file);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, dest);
+      console.log(`Copied: ${file}`);
+    }
   }
   
   // 复制 public 目录
