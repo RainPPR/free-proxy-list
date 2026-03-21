@@ -1,35 +1,9 @@
 import { statements } from '../db.js';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { readFileSync, existsSync } from 'fs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-function getAssetPath(filename) {
-  const paths = [
-    join(__dirname, filename),                       // 标准开发模式所在相对目录
-    join(process.cwd(), filename),                   // Docker 产物目录 (dist root)
-    join(process.cwd(), 'src', 'frontend', filename) // 根目录启动开发模式兜底
-  ];
-  for (const p of paths) {
-    if (existsSync(p)) return p;
-  }
-  return join(__dirname, filename); // Fallback to throw normal error
-}
-
-// Pre-read frontend assets into memory
-let TEMPLATE_HTML = '';
-let CSS_CONTENT = '';
-let JS_CONTENT = '';
-
-try {
-  TEMPLATE_HTML = readFileSync(getAssetPath('template.html'), 'utf-8');
-  CSS_CONTENT = readFileSync(getAssetPath('styles.css'), 'utf-8');
-  JS_CONTENT = readFileSync(getAssetPath('app.js'), 'utf-8');
-} catch (error) {
-  console.error('Failed to load frontend assets:', error);
-}
+// 资源编译期引入 (Bun 宏: 构建 exe 时直接打入文件，无需 fs)
+import TEMPLATE_HTML from './template.html' with { type: 'text' };
+import CSS_CONTENT from './styles.css' with { type: 'text' };
+import JS_CONTENT from './app.js' with { type: 'text' };
 
 /**
  * 服务器端渲染入口
@@ -38,7 +12,7 @@ try {
 export async function renderHomepage(region = 'global') {
   try {
     const stats = statements.getStats.get(region, region, region, region) || {};
-    const nodes = statements.getAvailableNodesForSub.all(region, region, region, 100, 0) || [];
+    const nodes = statements.getAvailableNodesForSub.all(region, 100, 0) || [];
     
     // 注入初始状态数据
     const INITIAL_STATE = {
