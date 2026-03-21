@@ -174,7 +174,8 @@ export function searchNodes(filters = {}) {
   }
   if (speed) {
     sql += ` AND download_speed_bps >= ?`;
-    params.push(parseInt(speed, 10));
+    // The UI/API speed parameter expresses KB/s, so multiply by 1024 to filter the bps metric.
+    params.push(parseInt(speed, 10) * 1024);
   }
   if (delay) {
     const delayField = region === 'cn' ? 'msft_latency' : 'google_latency';

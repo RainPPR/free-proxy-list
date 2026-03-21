@@ -1,4 +1,4 @@
-import { logger } from '../config.js';
+import { logger } from '../../config.js';
 
 // 获取 IP:PORT 的通用正则
 const IP_PORT_REGEX = /(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:[\s:<>\/a-zA-Z"=-]+?)(\d{2,5})\b/g;
@@ -48,20 +48,20 @@ async function fetchGeneric(url) {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/111.0'
       },
-      timeout: 10000 // 10秒超时
+      signal: AbortSignal.timeout(10000) // Bun standard timeout
     });
+    if (!res.ok) return [];
     const text = await res.text();
-    const proxies = extractProxies(text);
-    return proxies;
+    return extractProxies(text);
   } catch (err) {
-    console.error(`[Proxypool] Fetch failed for ${url}: ${err.message}`);
+    // Silently skip failed URLs to keep logs clean during massive scraping
     return [];
   }
 }
 
 // 代理源列表，结合四份 Python 脚本中的免费代理源
 const SOURCES = [
-  'http://www.66ip.cn/',
+  // 'http://www.66ip.cn/',
   'http://www.kxdaili.com/dailiip.html',
   'http://www.kxdaili.com/dailiip/2/1.html',
   'https://www.free-proxy-list.net/',

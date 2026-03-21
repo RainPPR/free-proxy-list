@@ -10,7 +10,7 @@ import { fetchText } from '../../utils/fetch-utils.js';
 
 async function fetchFromEndpoint(url) {
   try {
-    const protocol = basename(url).replace('.txt', '').toLowerCase();
+    const protocol = url.split('/').pop().replace('.txt', '').toLowerCase();
     const text = await fetchText(url, { timeout: 15000 });
     const lines = text.split('\n');
     const proxies = [];

@@ -100,14 +100,11 @@ async function handleSubconverter(request, region) {
     }
     
     if (target === 'v2ray') {
-      const v2 = nodes.map(n => ({
-        remark: nodeName(n),
-        protocol: n.protocol.startsWith('socks') ? 'socks' : 'http',
-        server: n.ip,
-        port: n.port,
-        tls: n.protocol === 'https'
-      }));
-      const base64 = Buffer.from(JSON.stringify({ version: 1, server: v2 })).toString('base64');
+      const rawLinks = nodes.map(n => {
+        const p = n.protocol === 'socks4' ? 'socks5' : n.protocol;
+        return `${p}://${n.ip}:${n.port}#${encodeURIComponent(nodeName(n))}`;
+      }).join('\n');
+      const base64 = Buffer.from(rawLinks).toString('base64');
       return new Response(base64, { headers: { 'Content-Type': 'text/plain' } });
     }
     
